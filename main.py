@@ -19,7 +19,6 @@ except ImportError:
     print("Dépendances manquantes. Lancez 'pip install customtkinter yt-dlp requests pillow'")
     exit(1)
 
-# Variables de déploiement
 APP_DIR = os.path.join(os.getenv('APPDATA', os.path.expanduser('~')), 'YT_Universal_Converter')
 APP_BIN_DIR = os.path.join(APP_DIR, 'bin')
 CONFIG_FILE = os.path.join(APP_DIR, 'config.json')
@@ -178,7 +177,6 @@ class YouTubeConverterApp(ctk.CTk):
         self.img_label = ctk.CTkLabel(self.right_panel, text="[Insérez l'URL pour la miniature]", width=280, height=158, fg_color="gray20", corner_radius=8)
         self.img_label.pack(pady=5, padx=20)
 
-        # Bouton Lecture Video Directe
         self.play_btn = ctk.CTkButton(self.right_panel, text="▶ Lire la vidéo", width=120, fg_color="#2E8B57", hover_color="#1F5F3A", state="disabled", command=self._play_video_preview)
         self.play_btn.pack(pady=(0, 5))
 
@@ -201,16 +199,24 @@ class YouTubeConverterApp(ctk.CTk):
         self.entry_end.pack(side="right", padx=5)
         ctk.CTkLabel(val_frame, text="Fin:").pack(side="right")
 
-        self.slider_start = ctk.CTkSlider(crop_frame, from_=0, to=1, command=self._on_start_slide, state="disabled", button_color="#E07A5F", progress_color="#E07A5F")
+        # Pour le curseur de DEBUT : La zone "remplie" (de zéro à la valeur) doit être GISE (unselected)
+        # La zone après le bouton doit être ORANGE (active) pour dessiner le début d'un couloir actif.
+        self.slider_start = ctk.CTkSlider(crop_frame, from_=0, to=1, command=self._on_start_slide, state="disabled", 
+                                          button_color="#E07A5F", 
+                                          progress_color="gray30",  # Zone AVANT le curseur
+                                          fg_color="#E07A5F")       # Zone APRES le curseur
         self.slider_start.pack(fill="x", padx=10, pady=(10, 5))
         self.slider_start.set(0)
 
-        # Correction de la couleur de progrès demandée par l'utilisateur (le remplissage avant le curseur)
-        self.slider_end = ctk.CTkSlider(crop_frame, from_=0, to=1, command=self._on_end_slide, state="disabled", button_color="#D16043", progress_color="#D16043")
+        # Pour le curseur de FIN : La zone "remplie" (de zéro à la valeur) doit être ORANGE (active)
+        # La zone après le bouton doit être GRISE (unselected) pour finir le couloir.
+        self.slider_end = ctk.CTkSlider(crop_frame, from_=0, to=1, command=self._on_end_slide, state="disabled", 
+                                        button_color="#E07A5F", 
+                                        progress_color="#E07A5F",   # Zone AVANT le curseur
+                                        fg_color="gray30")          # Zone APRES le curseur
         self.slider_end.pack(fill="x", padx=10, pady=(0, 15))
         self.slider_end.set(1)
 
-    # Callbacks du Slider
     def _on_start_slide(self, value):
         if value >= self.slider_end.get():
             self.slider_start.set(self.slider_end.get() - 1)
@@ -227,7 +233,6 @@ class YouTubeConverterApp(ctk.CTk):
         self.crop_end_var.set(format_seconds_to_time(value))
         self.crop_end_var.trace_add("write", self._on_text_crop_change)
 
-    # Callbacks des TextFields
     def _on_text_crop_change(self, *args):
         if not self.video_duration: return
         try:
@@ -261,28 +266,28 @@ class YouTubeConverterApp(ctk.CTk):
         self.after(0, update_ui)
 
     def _resolve_dependencies(self):
-        self.log_message("🔍 Vérification des API tierces (FFmpeg/FFplay)...")
+        self.log_message("🔍 Vérification intégrale système (FFmpeg & FFplay)...")
         sys_ffmpeg = shutil.which("ffmpeg")
         sys_ffplay = shutil.which("ffplay")
         if sys_ffmpeg and sys_ffplay:
             self.ffmpeg_path = os.path.dirname(sys_ffmpeg)
-            self._finalize_init("✔️ Moteurs natifs validés.")
+            self._finalize_init("✔️ Binaires natifs de traitement prêts.")
             return
 
         local_base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         if os.path.exists(os.path.join(local_base, "ffmpeg.exe")) and os.path.exists(os.path.join(local_base, "ffplay.exe")):
             self.ffmpeg_path = local_base
-            self._finalize_init("✔️ Moteurs locaux activés.")
+            self._finalize_init("✔️ Routines locales parées.")
             return
 
         appdata_ffmpeg = os.path.join(APP_BIN_DIR, "ffmpeg.exe")
         appdata_ffplay = os.path.join(APP_BIN_DIR, "ffplay.exe")
         if os.path.exists(appdata_ffmpeg) and os.path.exists(appdata_ffplay):
             self.ffmpeg_path = APP_BIN_DIR
-            self._finalize_init("✔️ Dépendances trouvées dans AppData.")
+            self._finalize_init("✔️ Moteur A/V persistant chargé.")
             return
 
-        self.log_message("⚙️ Mise à niveau requise (FFplay manquant). Auto-déploiement silencieux vers AppData...")
+        self.log_message("⚙️ Dépendance manquante. Auto-Déploiement en cache AppData...")
         try:
             os.makedirs(APP_BIN_DIR, exist_ok=True)
             zip_path = os.path.join(APP_BIN_DIR, "ffm_deps.zip")
@@ -300,7 +305,7 @@ class YouTubeConverterApp(ctk.CTk):
                 if os.path.isdir(ip): shutil.rmtree(ip)
 
             self.ffmpeg_path = APP_BIN_DIR
-            self._finalize_init("✅ Machine prête pour la Conversion.")
+            self._finalize_init("✅ Déploiement A/V réussi.")
 
         except Exception as e:
             self.log_message(f"❌ Échec de déploiement réseau. Allumez internet lors de la première ouverture.")
@@ -318,48 +323,47 @@ class YouTubeConverterApp(ctk.CTk):
         
         self.load_btn.configure(state="disabled")
         self.play_btn.configure(state="disabled")
-        self.log_message(f"🌐 Analyse Métadonnées de : {url[:30]}...")
+        self.log_message(f"🌐 Prise d'empreinte digitale : {url[:30]}...")
         threading.Thread(target=self._fetch_preview_task, args=(url,), daemon=True).start()
 
     def _play_video_preview(self):
-        """Lance un streamer vidéo léger (ffplay) utilisant l'URL directe récupérée via yt-dlp."""
-        if not self.video_metadata or not self.ffmpeg_path:
+        url = self.url_var.get().strip()
+        if not self.ffmpeg_path or not url:
             return
-            
+
         ffplay_exe = os.path.join(self.ffmpeg_path, "ffplay.exe")
         if not os.path.exists(ffplay_exe):
-            self.log_message("⚠️ Lecteur 'ffplay' non trouvé sur le système.")
+            self.log_message("⚠️ Lecteur 'ffplay' non trouvé. Veuillez patienter pour l'auto-déploiement ou l'installer manuellement.")
             return
 
-        # Extraction de l'URL directe du flux combiné (Vidéo + Audio)
-        direct_url = None
-        formats = self.video_metadata.get('formats', [])
-        
-        # Youtube Format 18 -> MP4 360p (Audio + Video garanti, parfait pour preview)
-        for f in formats:
-            if str(f.get('format_id')) == '18':
-                direct_url = f.get('url')
-                break
+        self.log_message("▶ Couplage sécurisé du stream vers le lecteur natif...")
+        self.play_btn.configure(state="disabled", text="▶ Lecture en cours...")
+
+        def pipe_thread():
+            try:
+                # Utilise une Pipeline (PIPE) système pour transférer les flux de téléchargement direct depuis python vers l'application C++
+                # Élimine totalement le problème des expirations d'URL ou des blocages CORS de YouTube (Erreur 403 HTTP).
+                ytdlp_cmd = [sys.executable, "-m", "yt_dlp", "--quiet", "-f", "b", "-o", "-", url]
+                ffplay_cmd = [ffplay_exe, "-window_title", "YT Universal - Lecteur Déporté", "-x", "640", "-y", "360", "-autoexit", "-i", "-"]
+
+                yt_proc = subprocess.Popen(ytdlp_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                # FFplay lit sur l'entrée standard (stdin) alimentée par la sortie de yt_dlp
+                ff_proc = subprocess.Popen(ffplay_cmd, stdin=yt_proc.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
                 
-        # Fallback dynamique si format 18 n'existe pas
-        if not direct_url:
-            for f in formats:
-                if f.get('acodec') != 'none' and f.get('vcodec') != 'none':
-                    direct_url = f.get('url')
-                    break
+                # Relâche la main courante du pipe Windows
+                yt_proc.stdout.close()
+                ff_proc.wait() # Bloque jusqu'à ce que la fenêtre FFplay soit fermée
+                
+                if yt_proc.poll() is None:
+                    yt_proc.terminate()
+                    
+                self.log_message("✅ Session de visionnage interrompue.")
+            except Exception as e:
+                self.log_message(f"❌ Corruption du lecteur stream : {str(e)}")
+            finally:
+                self.after(0, lambda: self.play_btn.configure(state="normal", text="▶ Lire la vidéo"))
 
-        if not direct_url:
-            self.log_message("⚠️ Impossible d'obtenir un flux unifié combiné pour YouTube. La vidéo ne peut être lue dans le Player.")
-            return
-
-        self.log_message("▶ Lancement du lecteur multimédia léger natif (ffplay)...")
-        # subprocess asynchrone pour ne pas geler GUI
-        def play_thread():
-            cmd = [ffplay_exe, "-window_title", "YT Universal - Aperçu Premium", "-x", "640", "-y", "360", "-autoexit", direct_url]
-            # CREATE_NO_WINDOW masque le terminal d'arrière-plan de ffplay sur Windows
-            subprocess.run(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
-            
-        threading.Thread(target=play_thread, daemon=True).start()
+        threading.Thread(target=pipe_thread, daemon=True).start()
 
     def _fetch_preview_task(self, url):
         logger = YTDLPLogger(self.log_message)
@@ -379,7 +383,7 @@ class YouTubeConverterApp(ctk.CTk):
                 info = ydl.extract_info(url, download=False)
             
             if info is None:
-                self.log_message("❌ Vidéo introuvable ou restreinte.")
+                self.log_message("❌ Vidéo cryptée ou restreinte.")
                 self.after(0, lambda: self.load_btn.configure(state="normal"))
                 return
                 
@@ -400,12 +404,12 @@ class YouTubeConverterApp(ctk.CTk):
                         raw_img = Image.open(io.BytesIO(resp.content))
                         img = ctk.CTkImage(light_image=raw_img, size=(280, 158))
                 except Exception as e:
-                   self.log_message(f"⚠️ Thumbnail fail : {str(e)}")
+                   self.log_message(f"⚠️ Thumbnail Error : {str(e)}")
 
             self.after(0, self._update_preview_ui, title, dur_str, img)
             
         except Exception as e:
-            self.log_message(f"❌ Erreur Extraction : {str(e)}")
+            self.log_message(f"❌ Exception Réseau : {str(e)}")
             self.after(0, lambda: self.load_btn.configure(state="normal"))
 
     def _update_preview_ui(self, title, dur_str, img_obj):
@@ -427,7 +431,7 @@ class YouTubeConverterApp(ctk.CTk):
             self.crop_start_var.set("00:00")
             self.crop_end_var.set(format_seconds_to_time(self.video_duration))
             
-        self.log_message("✅ Aperçu chargé. Interagissez avec les curseurs pour rogner la vidéo.")
+        self.log_message("✅ Prêt.")
         self.load_btn.configure(state="normal")
         self.download_button.configure(state="normal")
         self.play_btn.configure(state="normal")
