@@ -372,7 +372,7 @@ class UniversalStudioApp(ctk.CTk):
                 
                 for rect in rects:
                     # Valeurs de clonage par défaut
-                    r_size, r_color = 11, (0, 0, 0)
+                    r_size, r_color, r_font = 11, (0, 0, 0), "helv"
                     
                     # Scanning géométrique d'intersection pour cloner la taille et couleur
                     if "blocks" in page_dict:
@@ -385,17 +385,25 @@ class UniversalStudioApp(ctk.CTk):
                                             r_size = s["size"]
                                             c = s["color"]
                                             r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
+                                            # Détection heuristique de la famille de police (Serif / Sans-Serif / MonoSpace)
+                                            fn = s["font"].lower()
+                                            if any(x in fn for x in ["times", "serif", "georgia", "garamond", "palatino", "cambria"]):
+                                                r_font = "TiRo" # Times Roman
+                                            elif any(x in fn for x in ["courier", "mono", "consolas", "typewriter"]):
+                                                r_font = "Cour" # Courier
+                                            else:
+                                                r_font = "helv" # Helvetica (Standard Arial-like)
                                             break
                                             
-                    # Redaction dessine la gomme numérique et tamponne la lettre avec clônage Taille+Couleur
-                    page.add_redact_annot(rect, text=new_t, fontname="helv", fontsize=r_size, fill=(1,1,1), text_color=r_color, align=fitz.TEXT_ALIGN_LEFT)
+                    # Redaction dessine la gomme numérique et tamponne la lettre avec clônage Taille+Couleur+Style
+                    page.add_redact_annot(rect, text=new_t, fontname=r_font, fontsize=r_size, fill=(1,1,1), text_color=r_color, align=fitz.TEXT_ALIGN_LEFT)
                     replaced_count += 1
                 if rects:
                     page.apply_redactions()
 
             if replaced_count > 0:
                 doc.save(out_pdf, garbage=4, deflate=True)
-                self.log_message(f"🎉 Substitution parfaite ! {replaced_count} retouches clonées (Taille/Couleur).\nDocument : {out_pdf}")
+                self.log_message(f"🎉 Substitution parfaite ! {replaced_count} retouches clonées (Style/Taille/Couleur).\nDocument : {out_pdf}")
             else:
                 self.log_message("⚠️ Motif introuvable.")
                 
