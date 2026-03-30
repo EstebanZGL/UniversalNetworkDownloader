@@ -6,7 +6,6 @@ import urllib.request
 import zipfile
 import io
 import json
-import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -48,11 +47,9 @@ class YTDLPLogger:
     def __init__(self, log_callback):
         self.log_callback = log_callback
 
-    def debug(self, msg):
-        pass
+    def debug(self, msg): pass
 
     def warning(self, msg):
-        # Ignore les alertes cosmétiques
         if "JavaScript runtime" in msg or "ffmpeg not found" in msg: 
             return
         self.log_callback(f"⚠️ AVERTISSEMENT: {msg}")
@@ -61,35 +58,32 @@ class YTDLPLogger:
         self.log_callback(f"❌ ERREUR: {msg}")
 
 def parse_time_to_seconds(t_str: str):
-    if not t_str or not t_str.strip():
-        return None
+    if not t_str or not t_str.strip(): return None
     parts = t_str.strip().split(':')
     try:
-        if len(parts) == 3:
-            return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
-        elif len(parts) == 2:
-            return float(parts[0])*60 + float(parts[1])
-        elif len(parts) == 1:
-            return float(parts[0])
-    except ValueError:
-        pass
+        if len(parts) == 3: return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
+        elif len(parts) == 2: return float(parts[0])*60 + float(parts[1])
+        elif len(parts) == 1: return float(parts[0])
+    except ValueError: pass
     return None
 
 def format_seconds_to_time(seconds: float):
     if seconds is None: return ""
     mins, secs = divmod(int(seconds), 60)
     hours, mins = divmod(mins, 60)
-    if hours > 0:
-        return f"{hours:02d}:{mins:02d}:{secs:02d}"
+    if hours > 0: return f"{hours:02d}:{mins:02d}:{secs:02d}"
     return f"{mins:02d}:{secs:02d}"
 
-class YouTubeConverterApp(ctk.CTk):
+class UniversalStudioApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("YouTube Downloader & Converter - Premium Slider Edition")
-        self.geometry("880x640")
-        self.resizable(False, False)
+        self.title("Suite Universelle - Médias & PDF (Responsive Edition)")
+        # Dimensions initiales généreuses pour l'espace de travail
+        self.geometry("950x700")
+        self.minsize(800, 600)
+        # Architecture nativement Responsive (Déblocage des limites rigides)
+        self.resizable(True, True)
 
         settings = load_settings()
         saved_dir = settings.get("output_dir", os.path.expanduser("~\\Downloads"))
@@ -116,26 +110,57 @@ class YouTubeConverterApp(ctk.CTk):
         threading.Thread(target=self._resolve_dependencies, daemon=True).start()
 
     def _build_ui(self):
-        self.title_label = ctk.CTkLabel(self, text="Convertisseur YouTube Universel", font=ctk.CTkFont(size=22, weight="bold"))
-        self.title_label.pack(pady=(15, 10))
+        self.title_label = ctk.CTkLabel(self, text="Espace de Travail Sécurisé", font=ctk.CTkFont(size=22, weight="bold"))
+        self.title_label.pack(pady=(15, 5))
 
-        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_container.pack(fill="both", expand=True, padx=20, pady=5)
+        # Intégration de la Barre Multitâches (Onglets Responsives)
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.pack(fill="both", expand=True, padx=20, pady=(5, 20))
+
+        # Ajout direct des sections maîtresses
+        tab_yt = self.tabview.add("Ytb Downloader")
+        tab_pdf = self.tabview.add("Edit PDF")
+
+        # Remplissage isolé par modules
+        self._build_yt_ui(tab_yt)
+        self._build_pdf_ui(tab_pdf)
+
+    def _build_yt_ui(self, parent):
+        # Utilisation d'un modèle Grid élastique et auto-adaptatif
+        self.main_container = ctk.CTkFrame(parent, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.main_container.grid_columnconfigure(0, weight=3) # Force centrifuge ~60%
+        self.main_container.grid_columnconfigure(1, weight=2) # Force centrifuge ~40%
+        self.main_container.grid_rowconfigure(0, weight=1)
 
         self.left_panel = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.left_panel.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
-        self.right_panel = ctk.CTkFrame(self.main_container, width=340)
-        self.right_panel.pack(side="right", fill="y")
-        self.right_panel.pack_propagate(False)
+        self.right_panel = ctk.CTkFrame(self.main_container)
+        self.right_panel.grid(row=0, column=1, sticky="nsew")
 
+        # Injection du design existant dans les nouvelles cases adaptatives
         self._build_left_panel()
         self._build_right_panel()
+
+    def _build_pdf_ui(self, parent):
+        # Module PDF Viergé provisionné pour le futur (Structure Isolée)
+        bg_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        bg_frame.pack(fill="both", expand=True)
+
+        lbl_title = ctk.CTkLabel(bg_frame, text="Module d'Édition PDF (Bientôt Disponible)", font=ctk.CTkFont(size=20, weight="bold"))
+        lbl_title.pack(pady=(100, 10))
+        
+        lbl_desc = ctk.CTkLabel(bg_frame, text="Cet espace est dédié à la manipulation sécurisée et hors-ligne\nde vos documents PDF (Fusion, Découpage, Extraction de textes).", text_color="gray60")
+        lbl_desc.pack(pady=5)
 
     def _build_left_panel(self):
         self.url_label = ctk.CTkLabel(self.left_panel, text="Lien YouTube :", font=ctk.CTkFont(weight="bold"))
         self.url_label.pack(anchor="w")
-        self.url_entry = ctk.CTkEntry(self.left_panel, textvariable=self.url_var, width=450, placeholder_text="https://www.youtube.com/watch?v=...")
+        
+        # Le champ textuel s'étendra sur 100% de la largeur du parent, sans casser.
+        self.url_entry = ctk.CTkEntry(self.left_panel, textvariable=self.url_var, placeholder_text="https://www.youtube.com/watch?v=...")
         self.url_entry.pack(fill="x", pady=(0, 10))
 
         self.load_btn = ctk.CTkButton(self.left_panel, text="🔍 Charger l'Aperçu", fg_color="#E07A5F", hover_color="#D16043", command=self._start_preview_thread)
@@ -165,8 +190,9 @@ class YouTubeConverterApp(ctk.CTk):
         self.progress_bar.pack(fill="x", pady=(10, 5))
         self.progress_bar.set(0.0)
 
-        self.log_textbox = ctk.CTkTextbox(self.left_panel, height=130, state="disabled")
-        self.log_textbox.pack(fill="x", expand=True)
+        # La boite de log emplit l'espace vide restant en vertical (expand=True, fill="both")
+        self.log_textbox = ctk.CTkTextbox(self.left_panel, state="disabled")
+        self.log_textbox.pack(fill="both", expand=True)
 
         self.download_button = ctk.CTkButton(self.left_panel, text="🔄 Initialisation Système...", font=ctk.CTkFont(weight="bold", size=15), height=40, state="disabled", command=self._start_download_thread)
         self.download_button.pack(fill="x", pady=15)
@@ -175,8 +201,8 @@ class YouTubeConverterApp(ctk.CTk):
         self.hdr_label = ctk.CTkLabel(self.right_panel, text="Rognage et Lecteur", font=ctk.CTkFont(weight="bold", size=16))
         self.hdr_label.pack(pady=(10, 5))
 
-        self.img_label = ctk.CTkLabel(self.right_panel, text="[Insérez l'URL pour la miniature]", width=280, height=158, fg_color="gray20", corner_radius=8)
-        self.img_label.pack(pady=5, padx=20)
+        self.img_label = ctk.CTkLabel(self.right_panel, text="[Insérez l'URL pour la miniature]", height=158, fg_color="gray20", corner_radius=8)
+        self.img_label.pack(pady=5, padx=20, fill="x")
 
         self.play_btn = ctk.CTkButton(self.right_panel, text="▶ Lire la vidéo", width=120, fg_color="#2E8B57", hover_color="#1F5F3A", state="disabled", command=self._play_video_preview)
         self.play_btn.pack(pady=(0, 5))
@@ -214,6 +240,7 @@ class YouTubeConverterApp(ctk.CTk):
         self.slider_end.pack(fill="x", padx=10, pady=(0, 15))
         self.slider_end.set(1)
 
+    # Callbacks du Slider
     def _on_start_slide(self, value):
         if value >= self.slider_end.get():
             self.slider_start.set(self.slider_end.get() - 1)
@@ -230,6 +257,7 @@ class YouTubeConverterApp(ctk.CTk):
         self.crop_end_var.set(format_seconds_to_time(value))
         self.crop_end_var.trace_add("write", self._on_text_crop_change)
 
+    # Callbacks des TextFields
     def _on_text_crop_change(self, *args):
         if not self.video_duration: return
         try:
@@ -314,7 +342,6 @@ class YouTubeConverterApp(ctk.CTk):
 
     def _check_ready_state(self):
         self.download_button.configure(text="📥 Télécharger la section ciblée")
-        # Si la prévisualisation est déjà chargée mais attendait les moteurs graphiques
         if self.video_duration > 0:
              self.download_button.configure(state="normal")
              self.play_btn.configure(state="normal")
@@ -411,7 +438,6 @@ class YouTubeConverterApp(ctk.CTk):
             
         self.load_btn.configure(state="normal")
         
-        # Blocage de sécurité de l'interface graphique : on attend que l'installation FFmpeg soit finalisée d'abord
         if self.is_ready:
             self.download_button.configure(state="normal")
             self.play_btn.configure(state="normal")
@@ -519,5 +545,5 @@ class YouTubeConverterApp(ctk.CTk):
         self.play_btn.configure(state="normal")
 
 if __name__ == "__main__":
-    app = YouTubeConverterApp()
+    app = UniversalStudioApp()
     app.mainloop()
