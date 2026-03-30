@@ -332,90 +332,16 @@ class YouTubeConverterApp(ctk.CTk):
 
     def _play_video_preview(self):
         url = self.url_var.get().strip()
-        if not self.video_metadata or not url:
+        if not url:
             return
 
-        extractor = self.video_metadata.get('extractor', '').lower()
-        vid_id = self.video_metadata.get('id')
-
-        # Mode Web-Sandbox (Pour requêtes YouTube pures) - C'est la solution sécurisée 0-Bloatware
-        if 'youtube' in extractor and vid_id:
-            self.log_message("▶ Génération d'une Sandbox Web Sécure (Lecteur YouTube Interactif)...")
-            try:
-                html_content = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>YT Universal - Lecteur Sécurisé</title>
-    <style>
-        body {{ margin: 0; padding: 0; background-color: #0f0f0f; overflow: hidden; }}
-        iframe {{ width: 100vw; height: 100vh; border: none; }}
-    </style>
-</head>
-<body>
-    <iframe src="https://www.youtube.com/embed/{vid_id}?autoplay=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-</body>
-</html>"""
-                player_path = os.path.join(APP_DIR, "secure_player.html")
-                with open(player_path, "w", encoding="utf-8") as f:
-                    f.write(html_content)
-                
-                import webbrowser
-                webbrowser.open(f"file:///{player_path.replace(chr(92), '/')}")
-                self.log_message("✅ Lecteur interactif (Iframe) déployé.")
-            except Exception as e:
-                self.log_message(f"❌ Erreur Sandbox HTML: {str(e)}")
-            return
-
-        # Fallback de secours (FFplay) si ce n'est pas un lien YouTube mais un autre site
-        if not self.ffmpeg_path:
-            self.log_message("⚠️ Fichier 'ffplay.exe' introuvable dans les dépendances.")
-            return
-
-        self.play_btn.configure(state="disabled", text="▶ Lancement...")
-
-        direct_url = None
-        formats = self.video_metadata.get('formats', [])
-        
-        for f in formats:
-            if str(f.get('format_id')) == '18':
-                direct_url = f.get('url')
-                break
-                
-        if not direct_url:
-            for f in formats:
-                if f.get('acodec') != 'none' and f.get('vcodec') != 'none':
-                    direct_url = f.get('url')
-                    break
-
-        if not direct_url:
-            self.log_message("⚠️ Flux vidéo combiné introuvable.")
-            self.play_btn.configure(state="normal", text="▶ Lire la vidéo")
-            return
-
-        # Utilitaire d'identification pour rassurer les pares-feux serveur distant
-        headers = self.video_metadata.get('http_headers', {})
-        user_agent = headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-
-        self.log_message("▶ Ouverture du lecteur natif de secours (FFplay)...")
-        def play_thread():
-            try:
-                cmd = [
-                    os.path.join(self.ffmpeg_path, "ffplay.exe"),
-                    "-window_title", "YT Universal - Aperçu Premium",
-                    "-x", "640", "-y", "360",
-                    "-autoexit",
-                    "-user_agent", user_agent,
-                    direct_url
-                ]
-                subprocess.run(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
-                self.log_message("✅ Session de visionnage terminée.")
-            except Exception as e:
-                self.log_message(f"❌ Erreur critique mémoire: {str(e)}")
-            finally:
-                self.after(0, lambda: self.play_btn.configure(state="normal", text="▶ Lire la vidéo"))
-
-        threading.Thread(target=play_thread, daemon=True).start()
+        self.log_message("▶ Redirection native vers l'URL officielle...")
+        try:
+            import webbrowser
+            webbrowser.open(url)
+            self.log_message("✅ Onglet média déployé dans le navigateur par défaut.")
+        except Exception as e:
+            self.log_message(f"❌ Échec de la redirection: {str(e)}")
 
     def _fetch_preview_task(self, url):
         logger = YTDLPLogger(self.log_message)
