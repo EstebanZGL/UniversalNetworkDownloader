@@ -332,11 +332,43 @@ class YouTubeConverterApp(ctk.CTk):
 
     def _play_video_preview(self):
         url = self.url_var.get().strip()
-        if not self.ffmpeg_path or not self.video_metadata:
+        if not self.video_metadata or not url:
             return
 
-        ffplay_exe = os.path.join(self.ffmpeg_path, "ffplay.exe")
-        if not os.path.exists(ffplay_exe):
+        extractor = self.video_metadata.get('extractor', '').lower()
+        vid_id = self.video_metadata.get('id')
+
+        # Mode Web-Sandbox (Pour requêtes YouTube pures) - C'est la solution sécurisée 0-Bloatware
+        if 'youtube' in extractor and vid_id:
+            self.log_message("▶ Génération d'une Sandbox Web Sécure (Lecteur YouTube Interactif)...")
+            try:
+                html_content = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>YT Universal - Lecteur Sécurisé</title>
+    <style>
+        body {{ margin: 0; padding: 0; background-color: #0f0f0f; overflow: hidden; }}
+        iframe {{ width: 100vw; height: 100vh; border: none; }}
+    </style>
+</head>
+<body>
+    <iframe src="https://www.youtube.com/embed/{vid_id}?autoplay=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+</body>
+</html>"""
+                player_path = os.path.join(APP_DIR, "secure_player.html")
+                with open(player_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                
+                import webbrowser
+                webbrowser.open(f"file:///{player_path.replace(chr(92), '/')}")
+                self.log_message("✅ Lecteur interactif (Iframe) déployé.")
+            except Exception as e:
+                self.log_message(f"❌ Erreur Sandbox HTML: {str(e)}")
+            return
+
+        # Fallback de secours (FFplay) si ce n'est pas un lien YouTube mais un autre site
+        if not self.ffmpeg_path:
             self.log_message("⚠️ Fichier 'ffplay.exe' introuvable dans les dépendances.")
             return
 
@@ -361,22 +393,21 @@ class YouTubeConverterApp(ctk.CTk):
             self.play_btn.configure(state="normal", text="▶ Lire la vidéo")
             return
 
-        # Utilitaire d'identification pour rassurer YouTube côté réseau
+        # Utilitaire d'identification pour rassurer les pares-feux serveur distant
         headers = self.video_metadata.get('http_headers', {})
         user_agent = headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-        self.log_message("▶ Ouverture du lecteur natif...")
+        self.log_message("▶ Ouverture du lecteur natif de secours (FFplay)...")
         def play_thread():
             try:
                 cmd = [
-                    ffplay_exe,
+                    os.path.join(self.ffmpeg_path, "ffplay.exe"),
                     "-window_title", "YT Universal - Aperçu Premium",
                     "-x", "640", "-y", "360",
                     "-autoexit",
                     "-user_agent", user_agent,
                     direct_url
                 ]
-                # CREATE_NO_WINDOW masque le CMD terminal mais autorise la fenêtre SDL video de ffplay
                 subprocess.run(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
                 self.log_message("✅ Session de visionnage terminée.")
             except Exception as e:
