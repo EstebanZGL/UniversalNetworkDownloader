@@ -445,6 +445,19 @@ class YouTubeConverterApp(ctk.CTk):
         ext = self.ext_var.get()
         threading.Thread(target=self._download_task, args=(url, out_path, ext, s_sec, e_sec), daemon=True).start()
 
+    def _progress_hook(self, d):
+        if d['status'] == 'downloading':
+            try:
+                p_str = d.get('_percent_str', '0%').replace('%', '').strip()
+                import re
+                p_str = re.sub(r'\x1b\[([0-9,A-Z]{1,2}(;[0-9]{1,2})?(;[0-9]{3})?)?[m|K]?', '', p_str)
+                pct = float(p_str) / 100.0
+                self.after(0, lambda: self.progress_bar.set(pct))
+            except Exception: pass
+        elif d['status'] == 'finished':
+            self.after(0, lambda: self.progress_bar.set(1.0))
+            self.log_message("⏳ Téléchargement achevé, encodage FFmpeg en cours...")
+
     def _download_task(self, url: str, output_path: str, ext: str, start_sec: float, end_sec: float):
         logger = YTDLPLogger(self.log_message)
         is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
@@ -461,7 +474,11 @@ class YouTubeConverterApp(ctk.CTk):
         if self.ffmpeg_path:
             ydl_opts['ffmpeg_location'] = self.ffmpeg_path
 
-        if start_sec is not None or end_sec is not None:
+        use_crop = False
+        if start_sec is not None and start_sec > 0: use_crop = True
+        if end_sec is not None and self.video_duration and end_sec < self.video_duration: use_crop = True
+
+        if use_crop:
             def gen_range(info, ydl):
                 s = start_sec if start_sec is not None else 0
                 e = end_sec if end_sec is not None else float('inf')
