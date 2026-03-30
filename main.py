@@ -393,14 +393,35 @@ class UniversalStudioApp(ctk.CTk):
                                             # Récupération de l'ancrage Y précis de la police (Baseline Origin)
                                             r_origin_y = s["origin"][1]
                                             
-                                            # Détection heuristique
+                                            # Détection heuristique avancée (Gras/Italique + Famille)
                                             fn = s["font"].lower()
-                                            if any(x in fn for x in ["times", "serif", "georgia", "garamond", "palatino", "cambria"]):
-                                                r_font = "TiRo"
-                                            elif any(x in fn for x in ["courier", "mono", "consolas", "typewriter"]):
-                                                r_font = "Cour"
+                                            
+                                            is_bold = "bold" in fn or "black" in fn or "heavy" in fn
+                                            is_italic = "italic" in fn or "oblique" in fn
+                                            
+                                            is_serif = False
+                                            if any(x in fn for x in ["times", "georgia", "garamond", "palatino", "cambria"]):
+                                                is_serif = True
+                                            if "serif" in fn and "sans" not in fn:
+                                                is_serif = True
+                                                
+                                            is_mono = any(x in fn for x in ["courier", "mono", "consolas", "typewriter", "lucida"])
+                                            
+                                            if is_mono:
+                                                if is_bold and is_italic: r_font = "cobi"
+                                                elif is_bold: r_font = "cobo"
+                                                elif is_italic: r_font = "coit"
+                                                else: r_font = "cour"
+                                            elif is_serif:
+                                                if is_bold and is_italic: r_font = "tibi"
+                                                elif is_bold: r_font = "tibo"
+                                                elif is_italic: r_font = "tiit"
+                                                else: r_font = "tiro"
                                             else:
-                                                r_font = "helv"
+                                                if is_bold and is_italic: r_font = "hebi"
+                                                elif is_bold: r_font = "hebo"
+                                                elif is_italic: r_font = "heit"
+                                                else: r_font = "helv"
                                                 
                                             found = True
                                             break
