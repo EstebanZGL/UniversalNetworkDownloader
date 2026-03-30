@@ -270,6 +270,11 @@ class UniversalStudioApp(ctk.CTk):
 
         ctk.CTkButton(tab_replace, text="🖌️ Appliquer le Tampon Réécrit", height=40, fg_color="#8A2BE2", font=ctk.CTkFont(weight="bold"), command=lambda: threading.Thread(target=self._task_pdf_replace, daemon=True).start()).pack(pady=10)
 
+        # Global Reader App
+        reader_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        reader_frame.pack(fill="x", pady=0)
+        ctk.CTkButton(reader_frame, text="👀 Prévisualiser / Sélectionner le texte d'un PDF (Lecteur Externe)", height=30, font=ctk.CTkFont(weight="bold"), fg_color="#4F4F4F", hover_color="#2F2F2F", command=self._open_pdf_viewer).pack(pady=10)
+
     # UI Callbacks
     def _select_merge_files(self):
         files = filedialog.askopenfilenames(filetypes=[("PDF", "*.pdf")])
@@ -288,6 +293,16 @@ class UniversalStudioApp(ctk.CTk):
             settings = load_settings()
             settings["output_dir"] = d
             save_settings(settings)
+
+    def _open_pdf_viewer(self):
+        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")], title="Lecteur Interactif Sécurisé")
+        if f:
+            try:
+                import webbrowser
+                webbrowser.open(f"file:///{f.replace(chr(92), '/')}")
+                self.log_message("✅ Projection instantanée : PDF ouvert de manière interactive.")
+            except Exception as e:
+                self.log_message(f"❌ Impossible de projeter le PDF: {str(e)}")
 
     # PDF Processing Tasks
     def _task_pdf_merge(self):
@@ -344,7 +359,7 @@ class UniversalStudioApp(ctk.CTk):
         
         if not f or not old_t: return
         try:
-            self.log_message(f"\n⏳ Tâche PDF : Recherche de cible ['{old_t}'] et invisibilisation stricte...")
+            self.log_message(f"\n⏳ Algorithme Geométrique lancé : 'Clone & Replace' sur ['{old_t}']...")
             out_pdf = os.path.join(self.output_dir.get(), "EDITION_" + os.path.basename(f))
             
             doc = fitz.open(f)
@@ -353,18 +368,36 @@ class UniversalStudioApp(ctk.CTk):
             replaced_count = 0
             for page in doc:
                 rects = page.search_for(old_t, flags=flags)
+                page_dict = page.get_text("dict")
+                
                 for rect in rects:
-                    # Redaction dessine un fond blanc sur le flux de page et surimpose le texte en vectoriel noir
-                    page.add_redact_annot(rect, text=new_t, fontname="helv", fontsize=11, fill=(1,1,1), text_color=(0,0,0), align=fitz.TEXT_ALIGN_LEFT)
+                    # Valeurs de clonage par défaut
+                    r_size, r_color = 11, (0, 0, 0)
+                    
+                    # Scanning géométrique d'intersection pour cloner la taille et couleur
+                    if "blocks" in page_dict:
+                        for b in page_dict["blocks"]:
+                            if "lines" in b:
+                                for l in b["lines"]:
+                                    for s in l["spans"]:
+                                        s_rect = fitz.Rect(s["bbox"])
+                                        if s_rect.intersects(rect):
+                                            r_size = s["size"]
+                                            c = s["color"]
+                                            r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
+                                            break
+                                            
+                    # Redaction dessine la gomme numérique et tamponne la lettre avec clônage Taille+Couleur
+                    page.add_redact_annot(rect, text=new_t, fontname="helv", fontsize=r_size, fill=(1,1,1), text_color=r_color, align=fitz.TEXT_ALIGN_LEFT)
                     replaced_count += 1
                 if rects:
                     page.apply_redactions()
 
             if replaced_count > 0:
-                doc.save(out_pdf, garbage=4, deflate=True) # garbage 4 purge l'ancien xml
-                self.log_message(f"🎉 Substitution validée. {replaced_count} occurrences purgées et réécrites.\nDocument : {out_pdf}")
+                doc.save(out_pdf, garbage=4, deflate=True)
+                self.log_message(f"🎉 Substitution parfaite ! {replaced_count} retouches clonées (Taille/Couleur).\nDocument : {out_pdf}")
             else:
-                self.log_message("⚠️ Motif introuvable. Altération annulée.")
+                self.log_message("⚠️ Motif introuvable.")
                 
             doc.close()
         except Exception as e: self.log_message(f"❌ Erreur PDF: {str(e)}")
