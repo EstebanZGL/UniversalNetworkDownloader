@@ -359,7 +359,7 @@ class UniversalStudioApp(ctk.CTk):
         
         if not f or not old_t: return
         try:
-            self.log_message(f"\n⏳ Algorithme Geométrique lancé : 'Clone & Replace' sur ['{old_t}']...")
+            self.log_message(f"\n⏳ Algorithme Baseline 'Clone & Replace' sur ['{old_t}']...")
             out_pdf = os.path.join(self.output_dir.get(), "EDITION_" + os.path.basename(f))
             
             doc = fitz.open(f)
@@ -368,42 +368,62 @@ class UniversalStudioApp(ctk.CTk):
             replaced_count = 0
             for page in doc:
                 rects = page.search_for(old_t, flags=flags)
+                if not rects: continue
+                
                 page_dict = page.get_text("dict")
+                replacements = [] # Stockage memoire pour la double passe
                 
                 for rect in rects:
                     # Valeurs de clonage par défaut
                     r_size, r_color, r_font = 11, (0, 0, 0), "helv"
+                    r_origin_y = rect.y1 - 2 # Approximation baseline si échec
                     
-                    # Scanning géométrique d'intersection pour cloner la taille et couleur
+                    found = False
                     if "blocks" in page_dict:
                         for b in page_dict["blocks"]:
                             if "lines" in b:
                                 for l in b["lines"]:
                                     for s in l["spans"]:
                                         s_rect = fitz.Rect(s["bbox"])
+                                        # Si le span géométrique touche notre zone
                                         if s_rect.intersects(rect):
                                             r_size = s["size"]
                                             c = s["color"]
                                             r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
-                                            # Détection heuristique de la famille de police (Serif / Sans-Serif / MonoSpace)
+                                            # Récupération de l'ancrage Y précis de la police (Baseline Origin)
+                                            r_origin_y = s["origin"][1]
+                                            
+                                            # Détection heuristique
                                             fn = s["font"].lower()
                                             if any(x in fn for x in ["times", "serif", "georgia", "garamond", "palatino", "cambria"]):
-                                                r_font = "TiRo" # Times Roman
+                                                r_font = "TiRo"
                                             elif any(x in fn for x in ["courier", "mono", "consolas", "typewriter"]):
-                                                r_font = "Cour" # Courier
+                                                r_font = "Cour"
                                             else:
-                                                r_font = "helv" # Helvetica (Standard Arial-like)
+                                                r_font = "helv"
+                                                
+                                            found = True
                                             break
+                                    if found: break
+                            if found: break
                                             
-                    # Redaction dessine la gomme numérique et tamponne la lettre avec clônage Taille+Couleur+Style
-                    page.add_redact_annot(rect, text=new_t, fontname=r_font, fontsize=r_size, fill=(1,1,1), text_color=r_color, align=fitz.TEXT_ALIGN_LEFT)
+                    replacements.append((rect, r_origin_y, r_font, r_size, r_color))
+                    # Pose de la gomme numérique (UNIQUEMENT l'effacement blanc rectangulaire)
+                    page.add_redact_annot(rect, fill=(1,1,1))
                     replaced_count += 1
-                if rects:
-                    page.apply_redactions()
+                
+                # Exécution des gommes (Purge totale de l'ancien xml sous les rectangles)
+                page.apply_redactions()
+                
+                # SURIMPRESSION INDEPENDANTE : Contourne l'auto-rétrécissement (shrink) destructif du tag Redaction
+                # Garantie un alignement Y strictement mathématique avec les autres lettres de la ligne
+                for rect, origin_y, font, size, color in replacements:
+                    pt = fitz.Point(rect.x0, origin_y) 
+                    page.insert_text(pt, new_t, fontname=font, fontsize=size, color=color)
 
             if replaced_count > 0:
                 doc.save(out_pdf, garbage=4, deflate=True)
-                self.log_message(f"🎉 Substitution parfaite ! {replaced_count} retouches clonées (Style/Taille/Couleur).\nDocument : {out_pdf}")
+                self.log_message(f"🎉 Substitution Absolue ! {replaced_count} retouches parfaitement alignées.\nDocument : {out_pdf}")
             else:
                 self.log_message("⚠️ Motif introuvable.")
                 
