@@ -54,6 +54,90 @@ class YTDLPLogger:
     def error(self, msg):
         self.log_callback(f"❌ ERREUR: {msg}")
 
+
+class SplashScreen(ctk.CTkToplevel):
+    """Fenêtre de démarrage animée affichée pendant l'initialisation."""
+    _SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.overrideredirect(True)   # Pas de barre de titre
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+
+        W, H = 440, 280
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        self.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 2}")
+
+        # ── Fond principal ──────────────────────────────────────────────────
+        outer = ctk.CTkFrame(
+            self, corner_radius=18,
+            fg_color="#0f0f1a",
+            border_width=1, border_color="#3a3a60"
+        )
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Icône
+        ctk.CTkLabel(
+            outer, text="🎬",
+            font=ctk.CTkFont(size=52)
+        ).pack(pady=(32, 6))
+
+        # Titre
+        ctk.CTkLabel(
+            outer, text="Universal Downloader",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#e0e0f0"
+        ).pack()
+
+        # Sous-titre plateformes
+        ctk.CTkLabel(
+            outer,
+            text="YouTube · TikTok · Instagram · Pinterest",
+            font=ctk.CTkFont(size=11),
+            text_color="#6060a0"
+        ).pack(pady=(3, 22))
+
+        # Spinner + statut
+        self._spin_idx = 0
+        self._spinner_lbl = ctk.CTkLabel(
+            outer,
+            text="⠋  Initialisation…",
+            font=ctk.CTkFont(size=13),
+            text_color="#9090c0"
+        )
+        self._spinner_lbl.pack()
+
+        self._status_lbl = ctk.CTkLabel(
+            outer, text="",
+            font=ctk.CTkFont(size=11),
+            text_color="#505080"
+        )
+        self._status_lbl.pack(pady=(4, 0))
+
+        self.lift()
+        self.focus_force()
+        self._animate()
+
+    def _animate(self):
+        if not self.winfo_exists():
+            return
+        self._spin_idx = (self._spin_idx + 1) % len(self._SPINNER)
+        ch = self._SPINNER[self._spin_idx]
+        try:
+            self._spinner_lbl.configure(text=f"{ch}  Chargement du moteur A/V…")
+        except Exception:
+            return
+        self.after(90, self._animate)
+
+    def set_status(self, text: str):
+        """Met à jour le texte de statut (thread-safe via after())."""
+        try:
+            self._status_lbl.configure(text=text)
+        except Exception:
+            pass
+
 def parse_time_to_seconds(t_str: str):
     if not t_str or not t_str.strip(): return None
     parts = t_str.strip().split(':')
@@ -70,6 +154,20 @@ def format_seconds_to_time(seconds: float):
     hours, mins = divmod(mins, 60)
     if hours > 0: return f"{hours:02d}:{mins:02d}:{secs:02d}"
     return f"{mins:02d}:{secs:02d}"
+
+
+def get_platform_subfolder(url: str) -> str:
+    """Détermine le sous-dossier de sortie d'après la plateforme."""
+    u = url.lower()
+    if 'youtube.com' in u or 'youtu.be' in u:
+        return 'YouTube'
+    if 'tiktok.com' in u:
+        return 'TikTok'
+    if 'instagram.com' in u:
+        return 'Instagram'
+    if 'pinterest.com' in u or 'pin.it' in u:
+        return 'Pinterest'
+    return 'Autres'
 
 class UniversalStudioApp(ctk.CTk):
     def __init__(self):
@@ -113,11 +211,13 @@ class UniversalStudioApp(ctk.CTk):
         self.video_duration = 0 
         self.preview_image_ref = None 
 
+        self.withdraw()   # Masquer la fenêtre principale jusqu'à ce que le splash ferme
         self._build_ui()
-        
+
         self.crop_start_var.trace_add("write", self._on_text_crop_change)
         self.crop_end_var.trace_add("write", self._on_text_crop_change)
 
+        self.splash = SplashScreen(self)
         threading.Thread(target=self._resolve_dependencies, daemon=True).start()
 
     def _build_ui(self):
@@ -734,18 +834,26 @@ class UniversalStudioApp(ctk.CTk):
             self.update_idletasks()
         self.after(0, update_ui)
 
+    def _set_splash_status(self, text: str):
+        """Met à jour le splash depuis n'importe quel thread."""
+        if hasattr(self, 'splash') and self.splash and self.splash.winfo_exists():
+            self.after(0, lambda t=text: self.splash.set_status(t))
+
     def _resolve_dependencies(self):
         self.log_message("🔍 Vérification intégrale système (FFmpeg & FFplay)...")
+        self._set_splash_status("Recherche de FFmpeg sur le système…")
         sys_ffmpeg = shutil.which("ffmpeg")
         sys_ffplay = shutil.which("ffplay")
         if sys_ffmpeg and sys_ffplay:
             self.ffmpeg_path = os.path.dirname(sys_ffmpeg)
+            self._set_splash_status("✔ Binaires natifs trouvés !")
             self._finalize_init("✔️ Binaires natifs de traitement prêts.")
             return
 
         local_base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         if os.path.exists(os.path.join(local_base, "ffmpeg.exe")) and os.path.exists(os.path.join(local_base, "ffplay.exe")):
             self.ffmpeg_path = local_base
+            self._set_splash_status("✔ Moteur local trouvé !")
             self._finalize_init("✔️ Routines locales parées.")
             return
 
@@ -753,36 +861,53 @@ class UniversalStudioApp(ctk.CTk):
         appdata_ffplay = os.path.join(APP_BIN_DIR, "ffplay.exe")
         if os.path.exists(appdata_ffmpeg) and os.path.exists(appdata_ffplay):
             self.ffmpeg_path = APP_BIN_DIR
+            self._set_splash_status("✔ Moteur A/V en cache trouvé !")
             self._finalize_init("✔️ Moteur A/V persistant chargé.")
             return
 
         self.log_message("⚙️ Dépendance manquante. Auto-Déploiement en cache AppData...")
+        self._set_splash_status("⬇ Téléchargement de FFmpeg (première utilisation)…")
         try:
             os.makedirs(APP_BIN_DIR, exist_ok=True)
             zip_path = os.path.join(APP_BIN_DIR, "ffm_deps.zip")
             urllib.request.urlretrieve(FFMPEG_URL, zip_path)
-            
+            self._set_splash_status("📦 Extraction de FFmpeg…")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 for f_info in zip_ref.infolist():
                     if f_info.filename.endswith('ffmpeg.exe') or f_info.filename.endswith('ffprobe.exe') or f_info.filename.endswith('ffplay.exe'):
                         xp = zip_ref.extract(f_info, APP_BIN_DIR)
                         shutil.move(xp, os.path.join(APP_BIN_DIR, os.path.basename(xp)))
-                        
+
             os.remove(zip_path)
             for item in os.listdir(APP_BIN_DIR):
                 ip = os.path.join(APP_BIN_DIR, item)
                 if os.path.isdir(ip): shutil.rmtree(ip)
 
             self.ffmpeg_path = APP_BIN_DIR
+            self._set_splash_status("✔ FFmpeg installé avec succès !")
             self._finalize_init("✅ Déploiement A/V réussi.")
 
         except Exception as e:
+            self._set_splash_status(f"❌ Erreur FFmpeg : {str(e)[:50]}")
             self.log_message(f"❌ Échec de déploiement réseau. Code: {str(e)}")
 
     def _finalize_init(self, msg: str):
         self.log_message(msg)
         self.is_ready = True
         self.after(0, self._check_ready_state)
+        self.after(200, self._show_main_window)  # Petit délai pour que l'utilisateur voie l'état final du splash
+
+    def _show_main_window(self):
+        """Ferme le splash et affiche la fenêtre principale."""
+        try:
+            if hasattr(self, 'splash') and self.splash and self.splash.winfo_exists():
+                self.splash.destroy()
+            self.splash = None
+        except Exception:
+            pass
+        self.deiconify()
+        self.lift()
+        self.focus_force()
 
     def _check_ready_state(self):
         self.download_button.configure(text="📥 Télécharger la section ciblée")
@@ -998,7 +1123,10 @@ class UniversalStudioApp(ctk.CTk):
         is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
 
         for idx, url in enumerate(urls, 1):
-            self.log_message(f"\n⬇️  [{idx}/{total}] Téléchargement : {url[:70]}{'...' if len(url) > 70 else ''}")
+            subfolder = get_platform_subfolder(url)
+            final_output = os.path.join(output_path, subfolder)
+            os.makedirs(final_output, exist_ok=True)
+            self.log_message(f"\n⬇️  [{idx}/{total}] [{subfolder}] {url[:65]}{'...' if len(url) > 65 else ''}")
 
             def make_hook(current, tot):
                 def hook(d):
@@ -1021,7 +1149,7 @@ class UniversalStudioApp(ctk.CTk):
                 return hook
 
             ydl_opts = {
-                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(final_output, '%(title)s.%(ext)s'),
                 'writethumbnail': True,
                 'logger': logger,
                 'progress_hooks': [make_hook(idx, total)],
@@ -1068,8 +1196,14 @@ class UniversalStudioApp(ctk.CTk):
 
         hook = self._progress_hook_playlist if is_playlist else self._progress_hook
 
+        # Dossier plateforme
+        subfolder = get_platform_subfolder(url)
+        final_output = os.path.join(output_path, subfolder)
+        os.makedirs(final_output, exist_ok=True)
+        self.log_message(f"📁 Dossier de sortie : {subfolder}/")
+
         ydl_opts = {
-            'outtmpl': os.path.join(output_path, '%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s'),
+            'outtmpl': os.path.join(final_output, '%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s'),
             'writethumbnail': True, 'logger': logger, 'progress_hooks': [hook],
             'noplaylist': not is_playlist, 'noprogress': True,
             'ignoreerrors': True,  # Passe à la suivante si une vidéo est indisponible
