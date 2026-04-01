@@ -87,7 +87,11 @@ class UniversalStudioApp(ctk.CTk):
         self.ext_var = ctk.StringVar(value="mp3")
         self.crop_start_var = ctk.StringVar()
         self.crop_end_var = ctk.StringVar()
-        
+
+        # Variables mode batch (fichier .txt)
+        self.batch_urls = []          # Liste des URLs chargées depuis un .txt
+        self.batch_file_var = ctk.StringVar()
+
         # Variables de l'éditeur PDF
         self.pdf_merge_files = []
         self.pdf_split_file = ctk.StringVar()
@@ -100,6 +104,7 @@ class UniversalStudioApp(ctk.CTk):
         self.pdf_mod_old = ctk.StringVar()
         self.pdf_mod_new = ctk.StringVar()
         self.pdf_mod_case = ctk.BooleanVar(value=False)
+        self.playlist_mode = ctk.BooleanVar(value=False)
         
         self.is_downloading = False
         self.is_ready = False
@@ -149,11 +154,43 @@ class UniversalStudioApp(ctk.CTk):
         self.right_panel = ctk.CTkFrame(self.main_container)
         self.right_panel.grid(row=0, column=1, sticky="nsew")
 
-        self.url_label = ctk.CTkLabel(self.left_panel, text="Lien YouTube :", font=ctk.CTkFont(weight="bold"))
+        self.url_label = ctk.CTkLabel(
+            self.left_panel,
+            text="Lien Média (YouTube · TikTok · Instagram · Pinterest) :",
+            font=ctk.CTkFont(weight="bold")
+        )
         self.url_label.pack(anchor="w")
-        
-        self.url_entry = ctk.CTkEntry(self.left_panel, textvariable=self.url_var, placeholder_text="https://www.youtube.com/watch?v=...")
-        self.url_entry.pack(fill="x", pady=(0, 10))
+
+        url_row = ctk.CTkFrame(self.left_panel, fg_color="transparent")
+        url_row.pack(fill="x", pady=(0, 5))
+        self.url_entry = ctk.CTkEntry(
+            url_row, textvariable=self.url_var,
+            placeholder_text="https://... (YouTube, TikTok, Instagram, Pinterest)"
+        )
+        self.url_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        # ── Bouton import fichier .txt ──
+        self.import_txt_btn = ctk.CTkButton(
+            url_row, text="📂 .txt", width=70,
+            fg_color="#555568", hover_color="#3a3a50",
+            command=self._import_batch_file
+        )
+        self.import_txt_btn.pack(side="left")
+
+        # Étiquette compteur batch
+        self.batch_label = ctk.CTkLabel(
+            self.left_panel, text="", text_color="#7EC8E3",
+            font=ctk.CTkFont(size=11, slant="italic")
+        )
+        self.batch_label.pack(anchor="w", pady=(0, 2))
+
+        playlist_row = ctk.CTkFrame(self.left_panel, fg_color="transparent")
+        playlist_row.pack(fill="x", pady=(0, 5))
+        self.playlist_checkbox = ctk.CTkCheckBox(
+            playlist_row, text="🎵 Télécharger toute la Playlist",
+            variable=self.playlist_mode, command=self._on_playlist_toggle
+        )
+        self.playlist_checkbox.pack(side="left")
 
         self.load_btn = ctk.CTkButton(self.left_panel, text="🔍 Charger l'Aperçu", fg_color="#E07A5F", hover_color="#D16043", command=self._start_preview_thread)
         self.load_btn.pack(pady=5)
@@ -275,6 +312,49 @@ class UniversalStudioApp(ctk.CTk):
         reader_frame.pack(fill="x", pady=0)
         ctk.CTkButton(reader_frame, text="👀 Prévisualiser / Sélectionner le texte d'un PDF (Lecteur Externe)", height=30, font=ctk.CTkFont(weight="bold"), fg_color="#4F4F4F", hover_color="#2F2F2F", command=self._open_pdf_viewer).pack(pady=10)
 
+    # ── Batch import ──────────────────────────────────────────────────────────
+    def _import_batch_file(self):
+        """Charge un fichier .txt contenant des URLs (une par ligne)."""
+        filepath = filedialog.askopenfilename(
+            title="Sélectionner un fichier de liens",
+            filetypes=[("Fichier texte", "*.txt"), ("Tous les fichiers", "*.*")]
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = [ln.strip() for ln in f.readlines()]
+            urls = [ln for ln in lines if ln and ln.startswith('http')]
+            if not urls:
+                self.log_message("⚠️ Aucun lien valide trouvé dans le fichier (les lignes doivent commencer par http).")
+                return
+            self.batch_urls = urls
+            self.batch_file_var.set(filepath)
+            # Vider l'URL individuelle pour éviter la confusion
+            self.url_var.set("")
+            # Désactiver les sliders de rognage (non applicable en batch)
+            self.slider_start.configure(state="disabled")
+            self.slider_end.configure(state="disabled")
+            self.entry_start.configure(state="disabled")
+            self.entry_end.configure(state="disabled")
+            self.batch_label.configure(
+                text=f"📋 Batch actif : {len(urls)} lien(s) chargé(s) depuis '{os.path.basename(filepath)}'"
+            )
+            self.log_message(f"✅ Fichier batch chargé : {len(urls)} URL(s) détectée(s).")
+            for i, u in enumerate(urls, 1):
+                self.log_message(f"  {i}. {u[:80]}{'...' if len(u) > 80 else ''}")
+            # Activer le bouton de téléchargement si le système est prêt
+            if self.is_ready:
+                self.download_button.configure(state="normal")
+        except Exception as e:
+            self.log_message(f"❌ Erreur lecture fichier batch : {str(e)}")
+
+    def _clear_batch(self):
+        """Réinitialise le mode batch."""
+        self.batch_urls = []
+        self.batch_file_var.set("")
+        self.batch_label.configure(text="")
+
     # UI Callbacks
     def _select_merge_files(self):
         files = filedialog.askopenfilenames(filetypes=[("PDF", "*.pdf")])
@@ -359,98 +439,259 @@ class UniversalStudioApp(ctk.CTk):
         
         if not f or not old_t: return
         try:
-            self.log_message(f"\n⏳ Algorithme Baseline 'Clone & Replace' sur ['{old_t}']...")
+            self.log_message(f"\n⏳ Algorithme d'Altération de Flux (Stream Patching) sur ['{old_t}']...")
             out_pdf = os.path.join(self.output_dir.get(), "EDITION_" + os.path.basename(f))
-            
             doc = fitz.open(f)
-            flags = fitz.TEXT_MATCH_CASE if self.pdf_mod_case.get() else 0
             
+            import zlib
+            def _decompress(raw):
+                try: return zlib.decompress(raw)
+                except Exception:
+                    try: return zlib.decompress(raw, -15)
+                    except Exception: return raw
+
+            def _scan_stream_spans(data):
+                spans = []
+                i, n = 0, len(data)
+                while i < n:
+                    if data[i:i+1] == b'(':
+                        j = i + 1
+                        depth = 1
+                        while j < n and depth > 0:
+                            b = data[j:j+1]
+                            if b == b'\\': j += 2; continue
+                            if b == b'(': depth += 1
+                            elif b == b')': depth -= 1
+                            j += 1
+                        spans.append((i, j, 'lit', data[i:j]))
+                        i = j
+                    elif data[i:i+1] == b'<' and data[i:i+2] != b'<<':
+                        j = i + 1
+                        while j < n and data[j:j+1] != b'>': j += 1
+                        j += 1
+                        raw_s = data[i:j]
+                        inner = raw_s[1:-1].decode('ascii', errors='replace').replace(' ','').replace('\n','').replace('\r','')
+                        valid = set('0123456789abcdefABCDEF')
+                        if inner and all(c in valid for c in inner):
+                            spans.append((i, j, 'hex', raw_s))
+                        i = j
+                    else:
+                        i += 1
+                return spans
+
+            def _decode_pdf_string(kind, raw_s):
+                if kind == 'lit':
+                    inner = raw_s[1:-1]
+                    out = bytearray()
+                    i = 0
+                    while i < len(inner):
+                        if inner[i:i+1] == b'\\':
+                            nxt = inner[i+1:i+2]
+                            esc = {b'n':b'\n',b'r':b'\r',b't':b'\t',b'b':b'\b',
+                                   b'f':b'\f',b'(':b'(',b')':b')',b'\\':b'\\'}
+                            out += esc.get(nxt, nxt)
+                            i += 2
+                        else:
+                            out += inner[i:i+1]
+                            i += 1
+                    try: return out.decode('latin-1'), 'lat'
+                    except Exception: return None, None
+                inner = raw_s[1:-1].decode('ascii', errors='replace').replace(' ','').replace('\n','').replace('\r','')
+                if len(inner) % 2 != 0: inner += '0'
+                try: b = bytes(int(inner[k:k+2], 16) for k in range(0, len(inner), 2))
+                except Exception: return None, None
+                if len(b) >= 2 and len(b) % 2 == 0:
+                    try:
+                        t = b.decode('utf-16-be')
+                        if t and not all(ord(c) in (0xFFFD, 0x25A1) for c in t): return t, 'cid'
+                    except Exception: pass
+                try: return b.decode('latin-1'), 'lat'
+                except Exception: return None, None
+
+            def _encode_new_string(new_text, kind, hint, old_raw):
+                if kind == 'lit':
+                    esc = new_text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+                    try: return b'(' + esc.encode('latin-1', errors='replace') + b')'
+                    except Exception: return old_raw
+                inner = old_raw[1:-1].decode('ascii', errors='replace').replace(' ','')
+                orig_bytes = len(inner) // 2
+                bpc = 2 if hint == 'cid' else 1
+                pad = b'\x00\x20' if hint == 'cid' else b'\x20'
+                enc_name = 'utf-16-be' if hint == 'cid' else 'latin-1'
+                try:
+                    enc = bytearray(new_text.encode(enc_name, errors='replace'))
+                    if len(enc) < orig_bytes:
+                        while len(enc) < orig_bytes: enc += pad
+                        enc = bytes(enc[:orig_bytes])
+                    elif len(enc) > orig_bytes:
+                        enc = bytes(enc[:orig_bytes - (orig_bytes % bpc)])
+                    return b'<' + ''.join(f'{x:02x}' for x in enc).encode('ascii') + b'>'
+                except Exception: return old_raw
+
+            def _text_to_variants(text):
+                v = []
+                esc = text.replace('\\','\\\\').replace('(','\\(').replace(')','\\)')
+                try: v.append(('lit', b'(' + esc.encode('latin-1', errors='replace') + b')'))
+                except Exception: pass
+                try:
+                    h = ''.join(f'{b:02x}' for b in text.encode('latin-1'))
+                    v.append(('hex', f'<{h}>'.encode('ascii')))
+                except Exception: pass
+                try:
+                    h = ''.join(f'{b:02x}' for b in text.encode('utf-16-be'))
+                    v.append(('hex', f'<{h}>'.encode('ascii')))
+                except Exception: pass
+                return v
+
+            def _patch_stream(page, old_text, new_text):
+                xrefs = page.get_contents()
+                if not xrefs: return False
+                is_cid = any(ord(c) in (0xFFFD, 0x25A1) for c in old_text)
+                found = False
+                for xref in xrefs:
+                    raw = page.parent.xref_stream(xref)
+                    if raw is None: continue
+                    decoded = _decompress(raw)
+                    modified = decoded
+                    if not is_cid:
+                        for kind, variant in _text_to_variants(old_text):
+                            if variant in modified:
+                                rep = _encode_new_string(new_text, kind, 'cid' if kind == 'hex' else 'lat', variant)
+                                modified = modified.replace(variant, rep)
+                                found = True
+                    else:
+                        spans_in_stream = _scan_stream_spans(decoded)
+                        target_len = len(old_text)
+                        for (start, end, kind, raw_span) in spans_in_stream:
+                            txt, hint = _decode_pdf_string(kind, raw_span)
+                            if txt is None or hint != 'cid': continue
+                            if abs(len(txt) - target_len) <= 1:
+                                rep = _encode_new_string(new_text, kind, hint, raw_span)
+                                modified = decoded[:start] + rep + decoded[end:]
+                                found = True
+                                break
+                    if modified != decoded:
+                        page.parent.update_stream(xref, zlib.compress(modified, 9))
+                return found
+
+            def _detect_bg(page, rect):
+                for path in reversed(page.get_drawings()):
+                    fill = path.get("fill")
+                    if not fill: continue
+                    pr = fitz.Rect(path["rect"])
+                    if pr.contains(rect) or pr.intersects(rect):
+                        if isinstance(fill, (list, tuple)) and len(fill) >= 3:
+                            return tuple(fill[:3])
+                return None
+
+            def _get_page_font_ref(page, span_font_name):
+                """
+                Cherche dans les polices DÉJÀ embarquées sur la page (via page.get_fonts())
+                le nom local PDF (ex: 'F1', 'TT2') correspondant à la police du span.
+                Ce nom local peut être passé directement à insert_text() sans aucun buffer.
+                Retourne None si non trouvé.
+                """
+                try:
+                    span_clean = span_font_name.split("+")[-1].lower().replace("-", "").replace(" ", "")
+                    for xref, ext, ftype, basefont, local_name, enc in page.get_fonts(full=True):
+                        bf_clean = basefont.split("+")[-1].lower().replace("-", "").replace(" ", "")
+                        if bf_clean == span_clean or span_clean[:6] in bf_clean or bf_clean[:6] in span_clean:
+                            if local_name:
+                                return local_name  # ex: 'F1', 'TT0', 'C2_0' — déjà dans les ressources
+                except Exception:
+                    pass
+                return None
+
+            def _guess_base14(font_name, bold, italic):
+                """Fallback ultime : mappe vers Base14. Jamais d'erreur."""
+                n = font_name.lower()
+                b = bold or "bold" in n or "black" in n or "heavy" in n
+                i = italic or "italic" in n or "oblique" in n
+                mono = any(x in n for x in ["courier", "mono", "consolas", "typewriter"])
+                serif = any(x in n for x in ["times", "georgia", "garamond", "palatino", "serif"]) and "sans" not in n
+                if mono:   return "cobi" if (b and i) else "cobo" if b else "coit" if i else "cour"
+                elif serif: return "tibi" if (b and i) else "tibo" if b else "tiit" if i else "tiro"
+                else:       return "hebi" if (b and i) else "hebo" if b else "heit" if i else "helv"
+
+
+
             replaced_count = 0
             for page in doc:
-                rects = page.search_for(old_t, flags=flags)
-                if not rects: continue
+                text_instances = page.search_for(old_t)
+                if not text_instances: continue
                 
-                page_dict = page.get_text("dict")
-                replacements = [] # Stockage memoire pour la double passe
-                
-                for rect in rects:
-                    # Valeurs de clonage par défaut
-                    r_size, r_color, r_font = 11, (0, 0, 0), "helv"
-                    r_origin_y = rect.y1 - 2 # Approximation baseline si échec
+                # Édition chirurgicale du flux Zlib
+                success = _patch_stream(page, old_t, new_t)
+                if success:
+                    replaced_count += len(text_instances)
+                else:
+                    self.log_message(f"⚠️ Flux crypté. Basculement sur le Clone-Optique pour {len(text_instances)} occurrence(s)...")
+                    page_dict = page.get_text("dict")
+                    replacements = []
                     
-                    found = False
-                    if "blocks" in page_dict:
-                        for b in page_dict["blocks"]:
-                            if "lines" in b:
-                                for l in b["lines"]:
-                                    for s in l["spans"]:
-                                        s_rect = fitz.Rect(s["bbox"])
-                                        # Si le span géométrique touche notre zone
-                                        if s_rect.intersects(rect):
-                                            r_size = s["size"]
-                                            c = s["color"]
-                                            r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
-                                            # Récupération de l'ancrage Y précis de la police (Baseline Origin)
-                                            r_origin_y = s["origin"][1]
-                                            
-                                            # Détection heuristique avancée (Gras/Italique + Famille)
-                                            fn = s["font"].lower()
-                                            
-                                            is_bold = "bold" in fn or "black" in fn or "heavy" in fn
-                                            is_italic = "italic" in fn or "oblique" in fn
-                                            
-                                            is_serif = False
-                                            if any(x in fn for x in ["times", "georgia", "garamond", "palatino", "cambria"]):
-                                                is_serif = True
-                                            if "serif" in fn and "sans" not in fn:
-                                                is_serif = True
-                                                
-                                            is_mono = any(x in fn for x in ["courier", "mono", "consolas", "typewriter", "lucida"])
-                                            
-                                            if is_mono:
-                                                if is_bold and is_italic: r_font = "cobi"
-                                                elif is_bold: r_font = "cobo"
-                                                elif is_italic: r_font = "coit"
-                                                else: r_font = "cour"
-                                            elif is_serif:
-                                                if is_bold and is_italic: r_font = "tibi"
-                                                elif is_bold: r_font = "tibo"
-                                                elif is_italic: r_font = "tiit"
-                                                else: r_font = "tiro"
-                                            else:
-                                                if is_bold and is_italic: r_font = "hebi"
-                                                elif is_bold: r_font = "hebo"
-                                                elif is_italic: r_font = "heit"
-                                                else: r_font = "helv"
-                                                
-                                            found = True
-                                            break
-                                    if found: break
-                            if found: break
-                                            
-                    replacements.append((rect, r_origin_y, r_font, r_size, r_color))
-                    # Pose de la gomme numérique (UNIQUEMENT l'effacement blanc rectangulaire)
-                    page.add_redact_annot(rect, fill=(1,1,1))
-                    replaced_count += 1
-                
-                # Exécution des gommes (Purge totale de l'ancien xml sous les rectangles)
-                page.apply_redactions()
-                
-                # SURIMPRESSION INDEPENDANTE : Contourne l'auto-rétrécissement (shrink) destructif du tag Redaction
-                # Garantie un alignement Y strictement mathématique avec les autres lettres de la ligne
-                for rect, origin_y, font, size, color in replacements:
-                    pt = fitz.Point(rect.x0, origin_y) 
-                    page.insert_text(pt, new_t, fontname=font, fontsize=size, color=color)
+                    for rect in text_instances:
+                        r_size, r_color, r_font = 11, (0, 0, 0), "helv"
+                        r_origin_y = rect.y1 - 2
+                        r_bold, r_italic = False, False
+                        
+                        found = False
+                        if "blocks" in page_dict:
+                            for b in page_dict["blocks"]:
+                                if "lines" in b:
+                                    for l in b["lines"]:
+                                        for s in l["spans"]:
+                                            s_rect = fitz.Rect(s["bbox"])
+                                            if s_rect.intersects(rect):
+                                                r_size = s["size"]
+                                                c = s["color"]
+                                                r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
+                                                r_origin_y = s["origin"][1]
+                                                flg = s.get("flags", 0)
+                                                r_bold = bool(flg & (1 << 4))
+                                                r_italic = bool(flg & (1 << 1))
+                                                r_font_raw = s.get("font", "helv")
+                                                # Priorité 1 : nom local déjà dans les ressources PDF (police exacte)
+                                                r_font = _get_page_font_ref(page, r_font_raw)
+                                                # Priorité 2 : approximation Base14 (fallback sans erreur possible)
+                                                if not r_font:
+                                                    r_font = _guess_base14(r_font_raw, r_bold, r_italic)
+                                                found = True
+                                                break
+                                        if found: break
+                                if found: break
+                                
+                        replacements.append((rect, r_origin_y, r_font, r_size, r_color))
+                        bg_col = _detect_bg(page, rect)
+                        # Retouche la decoupe pour limiter l'impact de la gomme
+                        safe_rect = rect + (0.5, 0.5, -0.5, -0.5)
+                        page.add_redact_annot(safe_rect, fill=bg_col)
+                        replaced_count += 1
+                        
+                    # Gomme sans toucher aux tracés ou images environnantes
+                    try:
+                        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+                    except Exception:
+                        page.apply_redactions()
+                        
+                    for rect, origin_y, font, size, color in replacements:
+                        pt = fitz.Point(rect.x0, origin_y) 
+                        page.insert_text(pt, new_t, fontname=font, fontsize=size, color=color)
 
             if replaced_count > 0:
                 doc.save(out_pdf, garbage=4, deflate=True)
-                self.log_message(f"🎉 Substitution Absolue ! {replaced_count} retouches parfaitement alignées.\nDocument : {out_pdf}")
+                msg = f"🎉 Remplacement Réussi ! {replaced_count} correspondances traitées.\nDocument sauvegardé : {out_pdf}"
+                self.log_message(msg)
+                self.after(0, lambda: messagebox.showinfo("Succès PDF", msg))
             else:
-                self.log_message("⚠️ Motif introuvable.")
+                msg = "⚠️ Motif totalement introuvable dans le document ou sensible à la casse (espaces, majuscules...)."
+                self.log_message(msg)
+                self.after(0, lambda: messagebox.showwarning("Introuvable", msg))
                 
             doc.close()
-        except Exception as e: self.log_message(f"❌ Erreur PDF: {str(e)}")
-
+        except Exception as e:
+            msg = f"❌ Erreur PDF: {str(e)}"
+            self.log_message(msg)
+            self.after(0, lambda: messagebox.showerror("Erreur Fatale", msg))
 
     # YouTube Sliders & Preview logic
     def _on_start_slide(self, value):
@@ -549,6 +790,21 @@ class UniversalStudioApp(ctk.CTk):
              self.download_button.configure(state="normal")
              self.play_btn.configure(state="normal")
 
+    def _on_playlist_toggle(self):
+        if self.playlist_mode.get():
+            self.slider_start.configure(state="disabled")
+            self.slider_end.configure(state="disabled")
+            self.entry_start.configure(state="disabled")
+            self.entry_end.configure(state="disabled")
+            self.log_message("📋 Mode Playlist activé – rognage désactivé (non applicable sur une série de vidéos).")
+        else:
+            if self.video_duration > 0:
+                self.slider_start.configure(state="normal")
+                self.slider_end.configure(state="normal")
+            self.entry_start.configure(state="normal")
+            self.entry_end.configure(state="normal")
+            self.log_message("🎬 Mode Vidéo Unique – rognage réactivé.")
+
     def _start_preview_thread(self):
         url = self.url_var.get().strip()
         if not url:
@@ -557,7 +813,10 @@ class UniversalStudioApp(ctk.CTk):
         
         self.load_btn.configure(state="disabled")
         self.play_btn.configure(state="disabled")
-        self.log_message(f"🌐 Prise d'empreinte digitale : {url[:30]}...")
+        if self.playlist_mode.get():
+            self.log_message(f"📋 Récupération des infos playlist : {url[:40]}...")
+        else:
+            self.log_message(f"🌐 Prise d'empreinte digitale : {url[:30]}...")
         threading.Thread(target=self._fetch_preview_task, args=(url,), daemon=True).start()
 
     def _play_video_preview(self):
@@ -575,8 +834,10 @@ class UniversalStudioApp(ctk.CTk):
 
     def _fetch_preview_task(self, url):
         logger = YTDLPLogger(self.log_message)
+        is_playlist = self.playlist_mode.get()
         ydl_opts = {
-            'skip_download': True, 'quiet': False, 'no_warnings': True, 'noplaylist': True, 'logger': logger
+            'skip_download': True, 'quiet': False, 'no_warnings': True,
+            'noplaylist': not is_playlist, 'logger': logger
         }
         if self.ffmpeg_path: ydl_opts['ffmpeg_location'] = self.ffmpeg_path
 
@@ -585,8 +846,23 @@ class UniversalStudioApp(ctk.CTk):
                 info = ydl.extract_info(url, download=False)
             
             if info is None:
-                self.log_message("❌ Vidéo cryptée.")
+                self.log_message("❌ Vidéo ou playlist inaccessible.")
                 self.after(0, lambda: self.load_btn.configure(state="normal"))
+                return
+
+            # Mode playlist : afficher le résumé de la playlist
+            if is_playlist and info.get('_type') == 'playlist':
+                entries = info.get('entries', [])
+                count = len(list(entries))
+                title = info.get('title', 'Playlist Inconnue')
+                self.log_message(f"✅ Playlist détectée : '{title}' — {count} vidéo(s) trouvée(s).")
+                self.after(0, lambda: [
+                    self.info_title.configure(text=f"📋 {title}"),
+                    self.info_dur.configure(text=f"{count} vidéo(s) dans la playlist"),
+                    self.img_label.configure(image=None, text=f"🎵 {count} pistes à télécharger"),
+                    self.load_btn.configure(state="normal"),
+                    self.download_button.configure(state="normal") if self.is_ready else None
+                ])
                 return
                 
             self.video_metadata = info
@@ -642,14 +918,37 @@ class UniversalStudioApp(ctk.CTk):
 
     def _start_download_thread(self):
         if not self.is_ready: return
-        url = self.url_var.get().strip()
-        if not url: return
 
-        s_sec = parse_time_to_seconds(self.crop_start_var.get())
-        e_sec = parse_time_to_seconds(self.crop_end_var.get())
-        
-        if s_sec is not None and e_sec is not None:
-            if s_sec >= e_sec:
+        out_path = self.output_dir.get().strip()
+        ext = self.ext_var.get()
+
+        # ── Mode BATCH (fichier .txt) ──────────────────────────────────────────
+        if self.batch_urls:
+            self.is_downloading = True
+            self.download_button.configure(state="disabled")
+            self.load_btn.configure(state="disabled")
+            self.progress_bar.set(0.0)
+            self.log_message(f"\n🚀 Démarrage du batch : {len(self.batch_urls)} lien(s) à télécharger...")
+            threading.Thread(
+                target=self._download_batch_task,
+                args=(list(self.batch_urls), out_path, ext),
+                daemon=True
+            ).start()
+            return
+
+        # ── Mode INDIVIDUEL (URL unique) ───────────────────────────────────────
+        url = self.url_var.get().strip()
+        if not url:
+            self.log_message("⚠️ Saisissez une URL ou chargez un fichier .txt de liens.")
+            return
+
+        is_playlist = self.playlist_mode.get()
+        s_sec, e_sec = None, None
+
+        if not is_playlist:
+            s_sec = parse_time_to_seconds(self.crop_start_var.get())
+            e_sec = parse_time_to_seconds(self.crop_end_var.get())
+            if s_sec is not None and e_sec is not None and s_sec >= e_sec:
                 messagebox.showerror("Cropping Invalide", "Temps inversé.")
                 return
 
@@ -657,10 +956,12 @@ class UniversalStudioApp(ctk.CTk):
         self.download_button.configure(state="disabled")
         self.load_btn.configure(state="disabled")
         self.progress_bar.set(0.0)
-        self.log_message("\n🚀 Extraction cible en cours...")
 
-        out_path = self.output_dir.get().strip()
-        ext = self.ext_var.get()
+        if is_playlist:
+            self.log_message("\n🚀 Téléchargement de la Playlist en cours (peut durer plusieurs minutes)...")
+        else:
+            self.log_message("\n🚀 Extraction cible en cours...")
+
         threading.Thread(target=self._download_task, args=(url, out_path, ext, s_sec, e_sec), daemon=True).start()
 
     def _progress_hook(self, d):
@@ -676,14 +977,102 @@ class UniversalStudioApp(ctk.CTk):
             self.after(0, lambda: self.progress_bar.set(1.0))
             self.log_message("⏳ Téléchargement achevé, encodage en cours...")
 
+    def _progress_hook_playlist(self, d):
+        """Progress hook pour playlist : afficher le titre de chaque vidéo au lancement."""
+        if d['status'] == 'downloading':
+            try:
+                p_str = d.get('_percent_str', '0%').replace('%', '').strip()
+                import re
+                p_str = re.sub(r'\x1b\[([0-9,A-Z]{1,2}(;[0-9]{1,2})?(;[0-9]{3})?)?[m|K]?', '', p_str)
+                pct = float(p_str) / 100.0
+                self.after(0, lambda: self.progress_bar.set(pct))
+            except Exception: pass
+        elif d['status'] == 'finished':
+            title = d.get('info_dict', {}).get('title', '?')
+            self.log_message(f"✅ Encodé : {title}")
+
+    def _download_batch_task(self, urls: list, output_path: str, ext: str):
+        """Télécharge une liste d'URLs en séquence (mode batch fichier .txt)."""
+        logger = YTDLPLogger(self.log_message)
+        total = len(urls)
+        is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
+
+        for idx, url in enumerate(urls, 1):
+            self.log_message(f"\n⬇️  [{idx}/{total}] Téléchargement : {url[:70]}{'...' if len(url) > 70 else ''}")
+
+            def make_hook(current, tot):
+                def hook(d):
+                    if d['status'] == 'downloading':
+                        try:
+                            import re
+                            p_str = d.get('_percent_str', '0%').replace('%', '').strip()
+                            p_str = re.sub(r'\x1b\[([0-9,A-Z]{1,2}(;[0-9]{1,2})?(;[0-9]{3})?)?[m|K]?', '', p_str)
+                            pct_video = float(p_str) / 100.0
+                            # Progression globale = (vidéos terminées + pct vidéo actuelle) / total
+                            global_pct = ((current - 1) + pct_video) / tot
+                            self.after(0, lambda v=global_pct: self.progress_bar.set(v))
+                        except Exception:
+                            pass
+                    elif d['status'] == 'finished':
+                        title = d.get('info_dict', {}).get('title', '?')
+                        self.log_message(f"  ✅ Encodé : {title}")
+                        global_pct = current / tot
+                        self.after(0, lambda v=global_pct: self.progress_bar.set(v))
+                return hook
+
+            ydl_opts = {
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'writethumbnail': True,
+                'logger': logger,
+                'progress_hooks': [make_hook(idx, total)],
+                'noplaylist': True,
+                'noprogress': True,
+                'ignoreerrors': True,
+            }
+            if self.ffmpeg_path:
+                ydl_opts['ffmpeg_location'] = self.ffmpeg_path
+
+            if is_audio:
+                ydl_opts['format'] = 'bestaudio/best'
+                pa = [
+                    {'key': 'FFmpegExtractAudio', 'preferredcodec': ext},
+                    {'key': 'EmbedThumbnail'},
+                    {'key': 'FFmpegMetadata', 'add_metadata': True},
+                ]
+                if ext == 'mp3':
+                    pa[0]['preferredquality'] = '0'
+                ydl_opts['postprocessors'] = pa
+            else:
+                ydl_opts['format'] = f'bestvideo[ext={ext}]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+                ydl_opts['merge_output_format'] = ext
+                ydl_opts['postprocessors'] = [
+                    {'key': 'EmbedThumbnail'},
+                    {'key': 'FFmpegMetadata', 'add_metadata': True}
+                ]
+
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            except yt_dlp.utils.DownloadError:
+                self.log_message(f"  ❌ [{idx}/{total}] Échec DRM/Token pour cette URL, passage au suivant.")
+            except Exception as e:
+                self.log_message(f"  ❌ [{idx}/{total}] Erreur : {str(e)}, passage au suivant.")
+
+        self.log_message(f"\n🎉 Batch terminé ! {total} lien(s) traité(s). Fichiers exportés dans : {output_path}")
+        self.after(0, self._on_download_complete)
+
     def _download_task(self, url: str, output_path: str, ext: str, start_sec: float, end_sec: float):
         logger = YTDLPLogger(self.log_message)
         is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
+        is_playlist = self.playlist_mode.get()
+
+        hook = self._progress_hook_playlist if is_playlist else self._progress_hook
 
         ydl_opts = {
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'writethumbnail': True, 'logger': logger, 'progress_hooks': [self._progress_hook],
-            'noplaylist': True, 'noprogress': True
+            'outtmpl': os.path.join(output_path, '%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s'),
+            'writethumbnail': True, 'logger': logger, 'progress_hooks': [hook],
+            'noplaylist': not is_playlist, 'noprogress': True,
+            'ignoreerrors': True,  # Passe à la suivante si une vidéo est indisponible
         }
 
         if self.ffmpeg_path: ydl_opts['ffmpeg_location'] = self.ffmpeg_path
