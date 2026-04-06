@@ -14,7 +14,6 @@ try:
     from PIL import Image
     import customtkinter as ctk
     import yt_dlp
-    import fitz # PyMuPDF
 except ImportError as e:
     print(f"Dépendance manquante ({e}). Lancez 'pip install -r requirements.txt'")
     exit(1)
@@ -86,7 +85,7 @@ class SplashScreen(ctk.CTkToplevel):
 
         # Titre
         ctk.CTkLabel(
-            outer, text="Universal Downloader",
+            outer, text="Downloader Universel Local",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#e0e0f0"
         ).pack()
@@ -138,6 +137,12 @@ class SplashScreen(ctk.CTkToplevel):
         except Exception:
             pass
 
+def get_base_dir():
+    """Détermine le dossier de base (celui de l'exe ou du script)."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
 def parse_time_to_seconds(t_str: str):
     if not t_str or not t_str.strip(): return None
     parts = t_str.strip().split(':')
@@ -171,9 +176,32 @@ def get_platform_subfolder(url: str) -> str:
 
 class UniversalStudioApp(ctk.CTk):
     def __init__(self):
+        # 1. Masquage immédiat de la fenêtre principale
         super().__init__()
-        self.title("Suite Universelle - Médias & PDF (Responsive Edition)")
-        self.geometry("950x700")
+        self.withdraw()
+
+        # 2. Tentative de fermeture du Splash Screen natif de PyInstaller
+        try:
+            import pyi_splash
+            pyi_splash.close()
+        except ImportError:
+            pass
+
+        # 3. Affichage immédiat du SplashScreen animé (spinner)
+        self.splash = SplashScreen(self)
+        self.update() # Force l'affichage du splash avant de continuer
+
+        self.title("🎬 Downloader Universel Premium")
+        self.geometry("1000x750")
+
+        # Chargement de l'icône si elle existe
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
+        
         self.minsize(800, 600)
         self.resizable(True, True)
 
@@ -190,18 +218,6 @@ class UniversalStudioApp(ctk.CTk):
         self.batch_urls = []          # Liste des URLs chargées depuis un .txt
         self.batch_file_var = ctk.StringVar()
 
-        # Variables de l'éditeur PDF
-        self.pdf_merge_files = []
-        self.pdf_split_file = ctk.StringVar()
-        self.pdf_split_start = ctk.StringVar(value="1")
-        self.pdf_split_end = ctk.StringVar()
-        
-        self.pdf_extract_file = ctk.StringVar()
-        
-        self.pdf_mod_file = ctk.StringVar()
-        self.pdf_mod_old = ctk.StringVar()
-        self.pdf_mod_new = ctk.StringVar()
-        self.pdf_mod_case = ctk.BooleanVar(value=False)
         self.playlist_mode = ctk.BooleanVar(value=False)
         
         self.is_downloading = False
@@ -211,32 +227,27 @@ class UniversalStudioApp(ctk.CTk):
         self.video_duration = 0 
         self.preview_image_ref = None 
 
-        self.withdraw()   # Masquer la fenêtre principale jusqu'à ce que le splash ferme
         self._build_ui()
 
         self.crop_start_var.trace_add("write", self._on_text_crop_change)
         self.crop_end_var.trace_add("write", self._on_text_crop_change)
 
-        self.splash = SplashScreen(self)
         threading.Thread(target=self._resolve_dependencies, daemon=True).start()
 
     def _build_ui(self):
-        self.title_label = ctk.CTkLabel(self, text="Espace de Travail Sécure", font=ctk.CTkFont(size=22, weight="bold"))
+        self.title_label = ctk.CTkLabel(self, text="Downloader Universel Local", font=ctk.CTkFont(size=22, weight="bold"))
         self.title_label.pack(pady=(15, 5))
 
-        self.tabview = ctk.CTkTabview(self)
+        self.tabview = ctk.CTkTabview(self, segmented_button_selected_color="#E07A5F", segmented_button_unselected_hover_color="#3a3a50")
         self.tabview.pack(fill="both", expand=True, padx=20, pady=(5, 20))
 
-        tab_yt = self.tabview.add("Download Vidéos")
-        tab_pdf = self.tabview.add("Edit PDF")
-
+        tab_yt = self.tabview.add("📥 Vidéos & Musique")
         self._build_yt_ui(tab_yt)
-        self._build_pdf_ui(tab_pdf)
         
         # Barre commune pour le dossier de sortie (Mise au global tout en bas)
         env_frame = ctk.CTkFrame(self, fg_color="transparent")
         env_frame.pack(fill="x", padx=20, pady=(0, 15))
-        ctk.CTkLabel(env_frame, text="Dossier Global d'Export :", font=ctk.CTkFont(weight="bold")).pack(side="left")
+        ctk.CTkLabel(env_frame, text="Dossier de destination :", font=ctk.CTkFont(weight="bold")).pack(side="left")
         ctk.CTkEntry(env_frame, textvariable=self.output_dir, state="disabled", width=350).pack(side="left", padx=10, fill="x", expand=True)
         ctk.CTkButton(env_frame, text="Modifier", command=self._select_directory, width=80).pack(side="left")
 
@@ -256,7 +267,7 @@ class UniversalStudioApp(ctk.CTk):
 
         self.url_label = ctk.CTkLabel(
             self.left_panel,
-            text="Lien Média (YouTube · TikTok · Instagram · Pinterest) :",
+            text="Lien Média (YouTube 🎬 · TikTok 🎵 · Instagram 📸 · Pinterest 📌 · FB 👥 · X 🐦) :",
             font=ctk.CTkFont(weight="bold")
         )
         self.url_label.pack(anchor="w")
@@ -349,68 +360,7 @@ class UniversalStudioApp(ctk.CTk):
         self.slider_end.pack(fill="x", padx=10, pady=(0, 15))
         self.slider_end.set(1)
 
-    def _build_pdf_ui(self, parent):
-        pdf_tabs = ctk.CTkTabview(parent)
-        pdf_tabs.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        tab_merge = pdf_tabs.add("Fusionner")
-        tab_split = pdf_tabs.add("Découper")
-        tab_extract = pdf_tabs.add("Extraire Texte")
-        tab_replace = pdf_tabs.add("Modifier Texte")
 
-        # Tab: Fusionner
-        ctk.CTkLabel(tab_merge, text="Sélectionnez plusieurs fichiers PDF à lier dans le même document :", font=ctk.CTkFont(weight="bold")).pack(pady=10)
-        self.lbl_merge_files = ctk.CTkLabel(tab_merge, text="Aucun fichier", text_color="gray60")
-        self.lbl_merge_files.pack()
-        ctk.CTkButton(tab_merge, text="... Parcourir pour ajouter", command=self._select_merge_files).pack(pady=15)
-        ctk.CTkButton(tab_merge, text="🗜️ Fusionner en 1 PDF", height=40, font=ctk.CTkFont(weight="bold"), fg_color="#2E8B57", hover_color="#1F5F3A", command=lambda: threading.Thread(target=self._task_pdf_merge, daemon=True).start()).pack(pady=20)
-
-        # Tab: Découper
-        ctk.CTkLabel(tab_split, text="Fichier PDF d'origine à scinder :").pack(pady=10)
-        frame_spl_f = ctk.CTkFrame(tab_split, fg_color="transparent")
-        frame_spl_f.pack(fill="x", padx=40)
-        ctk.CTkEntry(frame_spl_f, textvariable=self.pdf_split_file, state="disabled").pack(side="left", fill="x", expand=True, padx=5)
-        ctk.CTkButton(frame_spl_f, text="Parcourir", width=70, command=lambda: self._select_single_pdf(self.pdf_split_file)).pack(side="left")
-        
-        frame_spl_rng = ctk.CTkFrame(tab_split, fg_color="transparent")
-        frame_spl_rng.pack(pady=20)
-        ctk.CTkLabel(frame_spl_rng, text="Conserver les pages").pack(side="left", padx=10)
-        ctk.CTkLabel(frame_spl_rng, text="De :").pack(side="left")
-        ctk.CTkEntry(frame_spl_rng, textvariable=self.pdf_split_start, width=40).pack(side="left", padx=5)
-        ctk.CTkLabel(frame_spl_rng, text="A :").pack(side="left")
-        ctk.CTkEntry(frame_spl_rng, textvariable=self.pdf_split_end, width=40).pack(side="left", padx=5)
-
-        ctk.CTkButton(tab_split, text="✂️ Extraire l'intervalle", height=40, font=ctk.CTkFont(weight="bold"), fg_color="#E07A5F", hover_color="#D16043", command=lambda: threading.Thread(target=self._task_pdf_split, daemon=True).start()).pack(pady=10)
-
-        # Tab: Extraire
-        ctk.CTkLabel(tab_extract, text="Extraction du texte brut sans formatage (Numérisation pure) :", font=ctk.CTkFont(weight="bold")).pack(pady=10)
-        frame_ext_f = ctk.CTkFrame(tab_extract, fg_color="transparent")
-        frame_ext_f.pack(fill="x", padx=40)
-        ctk.CTkEntry(frame_ext_f, textvariable=self.pdf_extract_file, state="disabled").pack(side="left", fill="x", expand=True, padx=5)
-        ctk.CTkButton(frame_ext_f, text="Parcourir", width=70, command=lambda: self._select_single_pdf(self.pdf_extract_file)).pack(side="left")
-        ctk.CTkButton(tab_extract, text="📄 Scanner en Texte (.txt)", height=40, command=lambda: threading.Thread(target=self._task_pdf_extract, daemon=True).start()).pack(pady=30)
-
-        # Tab: Remplacer/Modifier
-        warn_txt = "Avertissement : Le moteur invisibilisera mathématiquement les coordonnées de l'ancien mot pour imposer\nle nouveau. Limite du PDF : Les phrases environnantes ne se décaleront pas si votre mot cible déborde."
-        ctk.CTkLabel(tab_replace, text=warn_txt, text_color="#D16043", font=ctk.CTkFont(size=11, slant="italic")).pack(pady=5)
-        
-        frame_mod_f = ctk.CTkFrame(tab_replace, fg_color="transparent")
-        frame_mod_f.pack(fill="x", padx=40, pady=5)
-        ctk.CTkEntry(frame_mod_f, textvariable=self.pdf_mod_file, state="disabled").pack(side="left", fill="x", expand=True, padx=5)
-        ctk.CTkButton(frame_mod_f, text="Parcourir", width=70, command=lambda: self._select_single_pdf(self.pdf_mod_file)).pack(side="left")
-
-        ctk.CTkLabel(tab_replace, text="Phrase ou mot existant (A effacer) :", font=ctk.CTkFont(weight="bold")).pack(pady=(15,0))
-        ctk.CTkEntry(tab_replace, textvariable=self.pdf_mod_old, width=400).pack(pady=5)
-        ctk.CTkLabel(tab_replace, text="Texte de remplacement (A injecter) :", font=ctk.CTkFont(weight="bold")).pack(pady=(10,0))
-        ctk.CTkEntry(tab_replace, textvariable=self.pdf_mod_new, width=400).pack(pady=5)
-        ctk.CTkCheckBox(tab_replace, text="Sensibilité à la casse (Majuscules strictes)", variable=self.pdf_mod_case).pack(pady=15)
-
-        ctk.CTkButton(tab_replace, text="🖌️ Appliquer le Tampon Réécrit", height=40, fg_color="#8A2BE2", font=ctk.CTkFont(weight="bold"), command=lambda: threading.Thread(target=self._task_pdf_replace, daemon=True).start()).pack(pady=10)
-
-        # Global Reader App
-        reader_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        reader_frame.pack(fill="x", pady=0)
-        ctk.CTkButton(reader_frame, text="👀 Prévisualiser / Sélectionner le texte d'un PDF (Lecteur Externe)", height=30, font=ctk.CTkFont(weight="bold"), fg_color="#4F4F4F", hover_color="#2F2F2F", command=self._open_pdf_viewer).pack(pady=10)
 
     # ── Batch import ──────────────────────────────────────────────────────────
     def _import_batch_file(self):
@@ -456,342 +406,19 @@ class UniversalStudioApp(ctk.CTk):
         self.batch_label.configure(text="")
 
     # UI Callbacks
-    def _select_merge_files(self):
-        files = filedialog.askopenfilenames(filetypes=[("PDF", "*.pdf")])
-        if files:
-            self.pdf_merge_files = list(files)
-            self.lbl_merge_files.configure(text=f"{len(files)} document(s) détecté(s)")
 
-    def _select_single_pdf(self, var):
-        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
-        if f: var.set(f)
 
     def _select_directory(self):
-        d = filedialog.askdirectory(initialdir=self.output_dir.get(), title="Sélectionnez le dossier de réception (Vidéos & PDFs)")
+        d = filedialog.askdirectory(initialdir=self.output_dir.get(), title="Sélectionnez le dossier de réception (Vidéos)")
         if d: 
             self.output_dir.set(d)
             settings = load_settings()
             settings["output_dir"] = d
             save_settings(settings)
 
-    def _open_pdf_viewer(self):
-        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")], title="Lecteur Interactif Sécurisé")
-        if f:
-            try:
-                import webbrowser
-                webbrowser.open(f"file:///{f.replace(chr(92), '/')}")
-                self.log_message("✅ Projection instantanée : PDF ouvert de manière interactive.")
-            except Exception as e:
-                self.log_message(f"❌ Impossible de projeter le PDF: {str(e)}")
-
-    # PDF Processing Tasks
-    def _task_pdf_merge(self):
-        if not self.pdf_merge_files: return
-        try:
-            self.log_message("\n⏳ Tâche PDF : Algorithme d'Assemblage lancé...")
-            out_pdf = os.path.join(self.output_dir.get(), "FUSION_" + os.path.basename(self.pdf_merge_files[0]))
-            doc = fitz.open()
-            for p in self.pdf_merge_files:
-                with fitz.open(p) as f: doc.insert_pdf(f)
-            doc.save(out_pdf)
-            self.log_message(f"🎉 Fusion PDF validée ! Sortie : {out_pdf}")
-        except Exception as e: self.log_message(f"❌ Erreur PDF: {str(e)}")
-
-    def _task_pdf_split(self):
-        f = self.pdf_split_file.get()
-        if not f: return
-        try:
-            self.log_message("\n⏳ Tâche PDF : Algorithme de Scission lancé...")
-            s_page = int(self.pdf_split_start.get()) - 1
-            e_page = int(self.pdf_split_end.get()) - 1
-            out_pdf = os.path.join(self.output_dir.get(), "A_EXTRAIT_" + os.path.basename(f))
-            
-            doc = fitz.open(f)
-            # max() et min() purgent les erreurs humaines (ex: demande de la page 10 alors que le pdf fait 5 pages)
-            max_p = max(0, min(e_page + 1, doc.page_count))
-            safe_s = max(0, min(s_page, max_p-1))
-            doc.select(range(safe_s, max_p))
-            doc.save(out_pdf)
-            self.log_message(f"🎉 Scission réussie ! Fichier isolé : {out_pdf}")
-        except Exception as e: self.log_message(f"❌ Erreur PDF: {str(e)}")
-
-    def _task_pdf_extract(self):
-        f = self.pdf_extract_file.get()
-        if not f: return
-        try:
-            self.log_message("\n⏳ Tâche PDF : Aspiration du Texte Brut via OCR PyMuPDF...")
-            out_txt = os.path.join(self.output_dir.get(), "TXT_" + os.path.basename(f).replace('.pdf', '.txt'))
-            
-            doc = fitz.open(f)
-            text = ""
-            for i, page in enumerate(doc):
-                text += f"\n--- [PAGE {i+1}] ---\n"
-                text += page.get_text()
-            
-            with open(out_txt, 'w', encoding='utf-8') as ft: ft.write(text)
-            self.log_message(f"🎉 Aspiration en Fichier Txt terminée : {out_txt}")
-        except Exception as e: self.log_message(f"❌ Erreur PDF: {str(e)}")
-
-    def _task_pdf_replace(self):
-        f = self.pdf_mod_file.get()
-        old_t = self.pdf_mod_old.get()
-        new_t = self.pdf_mod_new.get()
-        
-        if not f or not old_t: return
-        try:
-            self.log_message(f"\n⏳ Algorithme d'Altération de Flux (Stream Patching) sur ['{old_t}']...")
-            out_pdf = os.path.join(self.output_dir.get(), "EDITION_" + os.path.basename(f))
-            doc = fitz.open(f)
-            
-            import zlib
-            def _decompress(raw):
-                try: return zlib.decompress(raw)
-                except Exception:
-                    try: return zlib.decompress(raw, -15)
-                    except Exception: return raw
-
-            def _scan_stream_spans(data):
-                spans = []
-                i, n = 0, len(data)
-                while i < n:
-                    if data[i:i+1] == b'(':
-                        j = i + 1
-                        depth = 1
-                        while j < n and depth > 0:
-                            b = data[j:j+1]
-                            if b == b'\\': j += 2; continue
-                            if b == b'(': depth += 1
-                            elif b == b')': depth -= 1
-                            j += 1
-                        spans.append((i, j, 'lit', data[i:j]))
-                        i = j
-                    elif data[i:i+1] == b'<' and data[i:i+2] != b'<<':
-                        j = i + 1
-                        while j < n and data[j:j+1] != b'>': j += 1
-                        j += 1
-                        raw_s = data[i:j]
-                        inner = raw_s[1:-1].decode('ascii', errors='replace').replace(' ','').replace('\n','').replace('\r','')
-                        valid = set('0123456789abcdefABCDEF')
-                        if inner and all(c in valid for c in inner):
-                            spans.append((i, j, 'hex', raw_s))
-                        i = j
-                    else:
-                        i += 1
-                return spans
-
-            def _decode_pdf_string(kind, raw_s):
-                if kind == 'lit':
-                    inner = raw_s[1:-1]
-                    out = bytearray()
-                    i = 0
-                    while i < len(inner):
-                        if inner[i:i+1] == b'\\':
-                            nxt = inner[i+1:i+2]
-                            esc = {b'n':b'\n',b'r':b'\r',b't':b'\t',b'b':b'\b',
-                                   b'f':b'\f',b'(':b'(',b')':b')',b'\\':b'\\'}
-                            out += esc.get(nxt, nxt)
-                            i += 2
-                        else:
-                            out += inner[i:i+1]
-                            i += 1
-                    try: return out.decode('latin-1'), 'lat'
-                    except Exception: return None, None
-                inner = raw_s[1:-1].decode('ascii', errors='replace').replace(' ','').replace('\n','').replace('\r','')
-                if len(inner) % 2 != 0: inner += '0'
-                try: b = bytes(int(inner[k:k+2], 16) for k in range(0, len(inner), 2))
-                except Exception: return None, None
-                if len(b) >= 2 and len(b) % 2 == 0:
-                    try:
-                        t = b.decode('utf-16-be')
-                        if t and not all(ord(c) in (0xFFFD, 0x25A1) for c in t): return t, 'cid'
-                    except Exception: pass
-                try: return b.decode('latin-1'), 'lat'
-                except Exception: return None, None
-
-            def _encode_new_string(new_text, kind, hint, old_raw):
-                if kind == 'lit':
-                    esc = new_text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
-                    try: return b'(' + esc.encode('latin-1', errors='replace') + b')'
-                    except Exception: return old_raw
-                inner = old_raw[1:-1].decode('ascii', errors='replace').replace(' ','')
-                orig_bytes = len(inner) // 2
-                bpc = 2 if hint == 'cid' else 1
-                pad = b'\x00\x20' if hint == 'cid' else b'\x20'
-                enc_name = 'utf-16-be' if hint == 'cid' else 'latin-1'
-                try:
-                    enc = bytearray(new_text.encode(enc_name, errors='replace'))
-                    if len(enc) < orig_bytes:
-                        while len(enc) < orig_bytes: enc += pad
-                        enc = bytes(enc[:orig_bytes])
-                    elif len(enc) > orig_bytes:
-                        enc = bytes(enc[:orig_bytes - (orig_bytes % bpc)])
-                    return b'<' + ''.join(f'{x:02x}' for x in enc).encode('ascii') + b'>'
-                except Exception: return old_raw
-
-            def _text_to_variants(text):
-                v = []
-                esc = text.replace('\\','\\\\').replace('(','\\(').replace(')','\\)')
-                try: v.append(('lit', b'(' + esc.encode('latin-1', errors='replace') + b')'))
-                except Exception: pass
-                try:
-                    h = ''.join(f'{b:02x}' for b in text.encode('latin-1'))
-                    v.append(('hex', f'<{h}>'.encode('ascii')))
-                except Exception: pass
-                try:
-                    h = ''.join(f'{b:02x}' for b in text.encode('utf-16-be'))
-                    v.append(('hex', f'<{h}>'.encode('ascii')))
-                except Exception: pass
-                return v
-
-            def _patch_stream(page, old_text, new_text):
-                xrefs = page.get_contents()
-                if not xrefs: return False
-                is_cid = any(ord(c) in (0xFFFD, 0x25A1) for c in old_text)
-                found = False
-                for xref in xrefs:
-                    raw = page.parent.xref_stream(xref)
-                    if raw is None: continue
-                    decoded = _decompress(raw)
-                    modified = decoded
-                    if not is_cid:
-                        for kind, variant in _text_to_variants(old_text):
-                            if variant in modified:
-                                rep = _encode_new_string(new_text, kind, 'cid' if kind == 'hex' else 'lat', variant)
-                                modified = modified.replace(variant, rep)
-                                found = True
-                    else:
-                        spans_in_stream = _scan_stream_spans(decoded)
-                        target_len = len(old_text)
-                        for (start, end, kind, raw_span) in spans_in_stream:
-                            txt, hint = _decode_pdf_string(kind, raw_span)
-                            if txt is None or hint != 'cid': continue
-                            if abs(len(txt) - target_len) <= 1:
-                                rep = _encode_new_string(new_text, kind, hint, raw_span)
-                                modified = decoded[:start] + rep + decoded[end:]
-                                found = True
-                                break
-                    if modified != decoded:
-                        page.parent.update_stream(xref, zlib.compress(modified, 9))
-                return found
-
-            def _detect_bg(page, rect):
-                for path in reversed(page.get_drawings()):
-                    fill = path.get("fill")
-                    if not fill: continue
-                    pr = fitz.Rect(path["rect"])
-                    if pr.contains(rect) or pr.intersects(rect):
-                        if isinstance(fill, (list, tuple)) and len(fill) >= 3:
-                            return tuple(fill[:3])
-                return None
-
-            def _get_page_font_ref(page, span_font_name):
-                """
-                Cherche dans les polices DÉJÀ embarquées sur la page (via page.get_fonts())
-                le nom local PDF (ex: 'F1', 'TT2') correspondant à la police du span.
-                Ce nom local peut être passé directement à insert_text() sans aucun buffer.
-                Retourne None si non trouvé.
-                """
-                try:
-                    span_clean = span_font_name.split("+")[-1].lower().replace("-", "").replace(" ", "")
-                    for xref, ext, ftype, basefont, local_name, enc in page.get_fonts(full=True):
-                        bf_clean = basefont.split("+")[-1].lower().replace("-", "").replace(" ", "")
-                        if bf_clean == span_clean or span_clean[:6] in bf_clean or bf_clean[:6] in span_clean:
-                            if local_name:
-                                return local_name  # ex: 'F1', 'TT0', 'C2_0' — déjà dans les ressources
-                except Exception:
-                    pass
-                return None
-
-            def _guess_base14(font_name, bold, italic):
-                """Fallback ultime : mappe vers Base14. Jamais d'erreur."""
-                n = font_name.lower()
-                b = bold or "bold" in n or "black" in n or "heavy" in n
-                i = italic or "italic" in n or "oblique" in n
-                mono = any(x in n for x in ["courier", "mono", "consolas", "typewriter"])
-                serif = any(x in n for x in ["times", "georgia", "garamond", "palatino", "serif"]) and "sans" not in n
-                if mono:   return "cobi" if (b and i) else "cobo" if b else "coit" if i else "cour"
-                elif serif: return "tibi" if (b and i) else "tibo" if b else "tiit" if i else "tiro"
-                else:       return "hebi" if (b and i) else "hebo" if b else "heit" if i else "helv"
 
 
 
-            replaced_count = 0
-            for page in doc:
-                text_instances = page.search_for(old_t)
-                if not text_instances: continue
-                
-                # Édition chirurgicale du flux Zlib
-                success = _patch_stream(page, old_t, new_t)
-                if success:
-                    replaced_count += len(text_instances)
-                else:
-                    self.log_message(f"⚠️ Flux crypté. Basculement sur le Clone-Optique pour {len(text_instances)} occurrence(s)...")
-                    page_dict = page.get_text("dict")
-                    replacements = []
-                    
-                    for rect in text_instances:
-                        r_size, r_color, r_font = 11, (0, 0, 0), "helv"
-                        r_origin_y = rect.y1 - 2
-                        r_bold, r_italic = False, False
-                        
-                        found = False
-                        if "blocks" in page_dict:
-                            for b in page_dict["blocks"]:
-                                if "lines" in b:
-                                    for l in b["lines"]:
-                                        for s in l["spans"]:
-                                            s_rect = fitz.Rect(s["bbox"])
-                                            if s_rect.intersects(rect):
-                                                r_size = s["size"]
-                                                c = s["color"]
-                                                r_color = (((c >> 16) & 255)/255.0, ((c >> 8) & 255)/255.0, (c & 255)/255.0)
-                                                r_origin_y = s["origin"][1]
-                                                flg = s.get("flags", 0)
-                                                r_bold = bool(flg & (1 << 4))
-                                                r_italic = bool(flg & (1 << 1))
-                                                r_font_raw = s.get("font", "helv")
-                                                # Priorité 1 : nom local déjà dans les ressources PDF (police exacte)
-                                                r_font = _get_page_font_ref(page, r_font_raw)
-                                                # Priorité 2 : approximation Base14 (fallback sans erreur possible)
-                                                if not r_font:
-                                                    r_font = _guess_base14(r_font_raw, r_bold, r_italic)
-                                                found = True
-                                                break
-                                        if found: break
-                                if found: break
-                                
-                        replacements.append((rect, r_origin_y, r_font, r_size, r_color))
-                        bg_col = _detect_bg(page, rect)
-                        # Retouche la decoupe pour limiter l'impact de la gomme
-                        safe_rect = rect + (0.5, 0.5, -0.5, -0.5)
-                        page.add_redact_annot(safe_rect, fill=bg_col)
-                        replaced_count += 1
-                        
-                    # Gomme sans toucher aux tracés ou images environnantes
-                    try:
-                        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=fitz.PDF_REDACT_LINE_ART_NONE)
-                    except Exception:
-                        page.apply_redactions()
-                        
-                    for rect, origin_y, font, size, color in replacements:
-                        pt = fitz.Point(rect.x0, origin_y) 
-                        page.insert_text(pt, new_t, fontname=font, fontsize=size, color=color)
-
-            if replaced_count > 0:
-                doc.save(out_pdf, garbage=4, deflate=True)
-                msg = f"🎉 Remplacement Réussi ! {replaced_count} correspondances traitées.\nDocument sauvegardé : {out_pdf}"
-                self.log_message(msg)
-                self.after(0, lambda: messagebox.showinfo("Succès PDF", msg))
-            else:
-                msg = "⚠️ Motif totalement introuvable dans le document ou sensible à la casse (espaces, majuscules...)."
-                self.log_message(msg)
-                self.after(0, lambda: messagebox.showwarning("Introuvable", msg))
-                
-            doc.close()
-        except Exception as e:
-            msg = f"❌ Erreur PDF: {str(e)}"
-            self.log_message(msg)
-            self.after(0, lambda: messagebox.showerror("Erreur Fatale", msg))
 
     # YouTube Sliders & Preview logic
     def _on_start_slide(self, value):
@@ -842,6 +469,8 @@ class UniversalStudioApp(ctk.CTk):
     def _resolve_dependencies(self):
         self.log_message("🔍 Vérification intégrale système (FFmpeg & FFplay)...")
         self._set_splash_status("Recherche de FFmpeg sur le système…")
+        
+        # 1. Vérifie si FFmpeg est dans le PATH système
         sys_ffmpeg = shutil.which("ffmpeg")
         sys_ffplay = shutil.which("ffplay")
         if sys_ffmpeg and sys_ffplay:
@@ -850,13 +479,26 @@ class UniversalStudioApp(ctk.CTk):
             self._finalize_init("✔️ Binaires natifs de traitement prêts.")
             return
 
+        # 2. Vérifie dans le dossier de l'exécutable (ou le dossier _internal de PyInstaller 6+)
         local_base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-        if os.path.exists(os.path.join(local_base, "ffmpeg.exe")) and os.path.exists(os.path.join(local_base, "ffplay.exe")):
-            self.ffmpeg_path = local_base
-            self._set_splash_status("✔ Moteur local trouvé !")
-            self._finalize_init("✔️ Routines locales parées.")
-            return
+        
+        # Liste des dossiers de recherche potentiels
+        search_dirs = [local_base]
+        if getattr(sys, 'frozen', False):
+            # PyInstaller 6+ met souvent les binaires dans '_internal' en mode --onedir
+            search_dirs.append(os.path.join(local_base, "_internal"))
+            # sys._MEIPASS est le point d'entrée universel pour les fichiers packagés
+            if hasattr(sys, '_MEIPASS'):
+                search_dirs.append(sys._MEIPASS)
 
+        for d in search_dirs:
+            if os.path.exists(os.path.join(d, "ffmpeg.exe")) and os.path.exists(os.path.join(d, "ffplay.exe")):
+                self.ffmpeg_path = d
+                self._set_splash_status("✔ Moteur local trouvé !")
+                self._finalize_init("✔️ Routines locales parées.")
+                return
+
+        # 3. Vérifie dans APPDATA (cache persistant)
         appdata_ffmpeg = os.path.join(APP_BIN_DIR, "ffmpeg.exe")
         appdata_ffplay = os.path.join(APP_BIN_DIR, "ffplay.exe")
         if os.path.exists(appdata_ffmpeg) and os.path.exists(appdata_ffplay):
@@ -1116,11 +758,63 @@ class UniversalStudioApp(ctk.CTk):
             title = d.get('info_dict', {}).get('title', '?')
             self.log_message(f"✅ Encodé : {title}")
 
+    def _get_ydl_opts(self, final_output, ext, logger, hook, is_playlist, start_sec=None, end_sec=None):
+        """Configure les options de yt_dlp de manière centralisée."""
+        is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
+        
+        # Template de nom de fichier
+        outtmpl = os.path.join(final_output, '%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s')
+        
+        opts = {
+            'outtmpl': outtmpl,
+            'writethumbnail': True,
+            'logger': logger,
+            'progress_hooks': [hook],
+            'noplaylist': not is_playlist,
+            'noprogress': True,
+            'ignoreerrors': True,
+        }
+
+        if self.ffmpeg_path:
+            opts['ffmpeg_location'] = self.ffmpeg_path
+
+        # Rognage temporel
+        use_crop = False
+        if not is_playlist:
+            if start_sec is not None and start_sec > 0: use_crop = True
+            if end_sec is not None and self.video_duration and end_sec < self.video_duration: use_crop = True
+
+        if use_crop:
+            def gen_range(info, ydl):
+                s = start_sec if start_sec is not None else 0
+                e = end_sec if end_sec is not None else float('inf')
+                return [{'start_time': s, 'end_time': e}]
+            opts['download_ranges'] = gen_range
+
+        # Post-processeurs selon format
+        if is_audio:
+            opts['format'] = 'bestaudio/best'
+            pa = [
+                {'key': 'FFmpegExtractAudio', 'preferredcodec': ext},
+                {'key': 'EmbedThumbnail'},
+                {'key': 'FFmpegMetadata', 'add_metadata': True},
+            ]
+            if ext == 'mp3': pa[0]['preferredquality'] = '0'
+            opts['postprocessors'] = pa
+        else:
+            opts['format'] = f'bestvideo[ext={ext}]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+            opts['merge_output_format'] = ext
+            opts['postprocessors'] = [
+                {'key': 'EmbedThumbnail'},
+                {'key': 'FFmpegMetadata', 'add_metadata': True}
+            ]
+        
+        return opts
+
     def _download_batch_task(self, urls: list, output_path: str, ext: str):
         """Télécharge une liste d'URLs en séquence (mode batch fichier .txt)."""
         logger = YTDLPLogger(self.log_message)
         total = len(urls)
-        is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
 
         for idx, url in enumerate(urls, 1):
             subfolder = get_platform_subfolder(url)
@@ -1136,11 +830,9 @@ class UniversalStudioApp(ctk.CTk):
                             p_str = d.get('_percent_str', '0%').replace('%', '').strip()
                             p_str = re.sub(r'\x1b\[([0-9,A-Z]{1,2}(;[0-9]{1,2})?(;[0-9]{3})?)?[m|K]?', '', p_str)
                             pct_video = float(p_str) / 100.0
-                            # Progression globale = (vidéos terminées + pct vidéo actuelle) / total
                             global_pct = ((current - 1) + pct_video) / tot
                             self.after(0, lambda v=global_pct: self.progress_bar.set(v))
-                        except Exception:
-                            pass
+                        except Exception: pass
                     elif d['status'] == 'finished':
                         title = d.get('info_dict', {}).get('title', '?')
                         self.log_message(f"  ✅ Encodé : {title}")
@@ -1148,35 +840,9 @@ class UniversalStudioApp(ctk.CTk):
                         self.after(0, lambda v=global_pct: self.progress_bar.set(v))
                 return hook
 
-            ydl_opts = {
-                'outtmpl': os.path.join(final_output, '%(title)s.%(ext)s'),
-                'writethumbnail': True,
-                'logger': logger,
-                'progress_hooks': [make_hook(idx, total)],
-                'noplaylist': True,
-                'noprogress': True,
-                'ignoreerrors': True,
-            }
-            if self.ffmpeg_path:
-                ydl_opts['ffmpeg_location'] = self.ffmpeg_path
-
-            if is_audio:
-                ydl_opts['format'] = 'bestaudio/best'
-                pa = [
-                    {'key': 'FFmpegExtractAudio', 'preferredcodec': ext},
-                    {'key': 'EmbedThumbnail'},
-                    {'key': 'FFmpegMetadata', 'add_metadata': True},
-                ]
-                if ext == 'mp3':
-                    pa[0]['preferredquality'] = '0'
-                ydl_opts['postprocessors'] = pa
-            else:
-                ydl_opts['format'] = f'bestvideo[ext={ext}]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
-                ydl_opts['merge_output_format'] = ext
-                ydl_opts['postprocessors'] = [
-                    {'key': 'EmbedThumbnail'},
-                    {'key': 'FFmpegMetadata', 'add_metadata': True}
-                ]
+            ydl_opts = self._get_ydl_opts(
+                final_output, ext, logger, make_hook(idx, total), is_playlist=False
+            )
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1191,56 +857,23 @@ class UniversalStudioApp(ctk.CTk):
 
     def _download_task(self, url: str, output_path: str, ext: str, start_sec: float, end_sec: float):
         logger = YTDLPLogger(self.log_message)
-        is_audio = ext in ['mp3', 'wav', 'm4a', 'flac']
         is_playlist = self.playlist_mode.get()
-
         hook = self._progress_hook_playlist if is_playlist else self._progress_hook
 
-        # Dossier plateforme
         subfolder = get_platform_subfolder(url)
         final_output = os.path.join(output_path, subfolder)
         os.makedirs(final_output, exist_ok=True)
         self.log_message(f"📁 Dossier de sortie : {subfolder}/")
 
-        ydl_opts = {
-            'outtmpl': os.path.join(final_output, '%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s'),
-            'writethumbnail': True, 'logger': logger, 'progress_hooks': [hook],
-            'noplaylist': not is_playlist, 'noprogress': True,
-            'ignoreerrors': True,  # Passe à la suivante si une vidéo est indisponible
-        }
-
-        if self.ffmpeg_path: ydl_opts['ffmpeg_location'] = self.ffmpeg_path
-
-        use_crop = False
-        if start_sec is not None and start_sec > 0: use_crop = True
-        if end_sec is not None and self.video_duration and end_sec < self.video_duration: use_crop = True
-
-        if use_crop:
-            def gen_range(info, ydl):
-                s = start_sec if start_sec is not None else 0
-                e = end_sec if end_sec is not None else float('inf')
-                return [{'start_time': s, 'end_time': e}]
-            ydl_opts['download_ranges'] = gen_range
-
-        if is_audio:
-            ydl_opts['format'] = 'bestaudio/best'
-            pa = [
-                {'key': 'FFmpegExtractAudio', 'preferredcodec': ext},
-                {'key': 'EmbedThumbnail'},
-                {'key': 'FFmpegMetadata', 'add_metadata': True},
-            ]
-            if ext == 'mp3': pa[0]['preferredquality'] = '0' 
-            ydl_opts['postprocessors'] = pa
-        else:
-            ydl_opts['format'] = f'bestvideo[ext={ext}]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
-            ydl_opts['merge_output_format'] = ext
-            ydl_opts['postprocessors'] = [{'key': 'EmbedThumbnail'}, {'key': 'FFmpegMetadata', 'add_metadata': True}]
+        ydl_opts = self._get_ydl_opts(
+            final_output, ext, logger, hook, is_playlist, start_sec, end_sec
+        )
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             self.log_message(f"🎉 Rendu Terminé ! Fichier {ext.upper()} exporté.")
-        except yt_dlp.utils.DownloadError as e: self.log_message("❌ Echec DRM ou Token serveur.")
+        except yt_dlp.utils.DownloadError: self.log_message("❌ Echec DRM ou Token serveur.")
         except Exception as e: self.log_message(f"❌ Erreur Interne : {str(e)}")
         finally: self.after(0, self._on_download_complete)
 

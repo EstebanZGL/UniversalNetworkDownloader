@@ -2,4 +2,3 @@ customtkinter
 yt-dlp
 requests
 pillow
-pymupdf
