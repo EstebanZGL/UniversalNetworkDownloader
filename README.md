@@ -1,62 +1,57 @@
-# 🎬 Downloader Universel Premium
+# Downloader Universel Premium
 
-Un outil de téléchargement de médias polyvalent, puissant et facile à utiliser, conçu pour récupérer du contenu depuis diverses plateformes sociales avec une interface moderne et intuitive.
+Cet outil est un utilitaire simple et puissant pour récupérer des contenus depuis diverses plateformes sociales. J'ai conçu cette interface pour qu'elle soit intuitive, tout en permettant une personnalisation précise de vos téléchargements.
 
-![Splash Screen](splash.png)
+## Ce que l'outil propose
 
-## ✨ Caractéristiques
+L'application permet de gérer vos téléchargements de médias de manière flexible :
 
-- **Support Multi-plateforme** : Téléchargez depuis YouTube, TikTok, Instagram, Pinterest, Facebook, X (Twitter), et bien d'autres.
-- **Formats Variés** : 
-  - **Audio** : MP3, WAV, M4A, FLAC.
-  - **Vidéo** : MP4, MKV, WEBM.
-- **Rognage de Précision** : Sélectionnez exactement la partie du média que vous souhaitez télécharger grâce aux curseurs de début et de fin.
-- **Téléchargement par Lot (Batch)** : Importez un fichier `.txt` contenant une liste d'URLs pour tout télécharger d'un coup.
-- **Support des Playlists** : Téléchargez des playlists entières en un seul clic.
-- **Gestion Intégrée de FFmpeg** : L'application détecte, télécharge et configure automatiquement FFmpeg si nécessaire.
-- **Interface Moderne** : Développé avec `CustomTkinter` pour un look "Premium" et un support du mode sombre/clair système.
-- **Aperçu en Temps Réel** : Visualisez la miniature et les informations du média avant le téléchargement.
+- **Support multi-plateforme** : Fonctionne avec YouTube, TikTok, Instagram, Pinterest, Facebook, X (Twitter) et bien d'autres services.
+- **Gestion des formats** : Vous pouvez choisir entre plusieurs formats audio (MP3, WAV, M4A, FLAC) ou vidéo (MP4, MKV, WEBM).
+- **Rognage précis** : Un système de curseurs vous permet de sélectionner précisément le début et la fin d'une séquence pour ne télécharger que ce qui vous intéresse.
+- **Téléchargement par lots** : Si vous avez une liste de liens, vous pouvez simplement les mettre dans un fichier .txt et l'importer pour tout traiter d'un coup.
+- **Gestion des playlists** : L'outil gère le téléchargement de playlists entières automatiquement.
+- **Installation automatique de FFmpeg** : Pour simplifier la vie, l'application détecte si FFmpeg est présent sur votre système et peut s'occuper de l'installer si ce n'est pas le cas.
+- **Interface soignée** : Utilisation de CustomTkinter pour un rendu moderne qui s'adapte au mode sombre ou clair de votre système.
+- **Aperçu intégré** : Vous pouvez voir la miniature et les informations du média avant de lancer le téléchargement.
 
-## 🚀 Installation
+## Installation et démarrage
 
-### Prérequis
-- Python 3.8+
-- [FFmpeg](https://ffmpeg.org/) (optionnel, l'application peut l'installer pour vous)
+### Avant de commencer
+Vous aurez besoin de Python 3.8 ou une version plus récente. FFmpeg est nécessaire pour le traitement, mais si vous ne l'avez pas, l'application vous proposera de l'installer lors du premier lancement.
 
-### Installation des dépendances
-Clonez le dépôt et installez les bibliothèques nécessaires :
+### Installation des bibliothèques
+Pour installer les dépendances nécessaires, lancez cette commande dans votre terminal :
 ```bash
 pip install -r requirements.txt
 ```
 
-## 🛠️ Utilisation
+## Comment s'en servir
 
-1. Lancez l'application :
+1. Lancez le script principal :
    ```bash
    python main.py
    ```
-2. Collez l'URL du média dans le champ dédié.
-3. (Optionnel) Utilisez le bouton **Aperçu** pour charger les informations et régler le rognage.
-4. Choisissez votre format de sortie.
-5. Cliquez sur **Télécharger**.
+2. Collez le lien du média que vous souhaitez récupérer.
+3. Cliquez sur le bouton d'aperçu pour charger les informations. C'est ici que vous pourrez ajuster le début et la fin de la séquence si besoin.
+4. Sélectionnez le format de sortie souhaité.
+5. Lancez le téléchargement.
 
-### Mode Batch (.txt)
-Créez un fichier texte avec une URL par ligne, puis utilisez le bouton `📂 .txt` dans l'application pour l'importer.
+### Téléchargement en série (Batch)
+Si vous avez beaucoup de liens, placez-les simplement dans un fichier texte (un lien par ligne) et utilisez l'option d'importation .txt dans l'interface.
 
-## 📦 Compilation en Exécutable
+## Créer un exécutable
 
-Pour créer une version portable (`.exe`), utilisez le script de build fourni :
+Si vous préférez utiliser l'application sans lancer Python à chaque fois, vous pouvez générer une version portable (.exe) avec le script de build :
 ```bash
 python build.py
 ```
-L'exécutable se trouvera dans le dossier `dist/`.
+Le résultat sera disponible dans le dossier `dist/`.
 
-## 📝 Technologies utilisées
+## Les technologies derrière le projet
 
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** : Le moteur de téléchargement ultra-puissant.
-- **[CustomTkinter](https://github.com/TomSchimansky/CustomTkinter)** : Pour l'interface graphique moderne.
-- **[FFmpeg](https://ffmpeg.org/)** : Pour le traitement audio/vidéo et le rognage.
-- **Pillow** : Pour la gestion des images et miniatures.
-
----
-*Développé avec ❤️ pour une expérience de téléchargement simplifiée.*
+Ce projet s'appuie sur plusieurs outils robustes :
+- **yt-dlp** pour le moteur de téléchargement.
+- **CustomTkinter** pour l'interface graphique.
+- **FFmpeg** pour tout ce qui concerne le traitement et le rognage des fichiers.
+- **Pillow** pour la manipulation des images et miniatures.
